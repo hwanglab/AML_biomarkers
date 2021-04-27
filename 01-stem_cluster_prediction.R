@@ -32,8 +32,6 @@ test <- FindClusterFreq(stem, c("patient_id", "timepoint"), "clusters") %>%
 
 sapply(test[3:23], sd)
 
-
-
 ### New Biomarkers
 
 diagnosis <- subset(seurat, timepoint == "Diagnosis")

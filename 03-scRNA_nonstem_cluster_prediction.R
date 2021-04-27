@@ -18,21 +18,6 @@ val <- read_excel(here("clinical_info/TARGET_AML_ClinicalData_Validation_2018121
 dis <- read_excel(here("clinical_info/TARGET_AML_ClinicalData_Discovery_20181213.xlsx"))
 seq <- read_excel(file.path("../preprocessing/sample_info/Global Demultiplexing and Annotation.xlsx"))
 
-UseLASSOModelCoefs <- function(x, coef) {
-  mod2 <- coef[-1, ] %>% as.data.frame()
-  w_vec <- list(0)
-  mod2 <- mod2[which(mod2[1] != 0), ,drop = FALSE]
-  
-  for (i in seq_along(rownames(mod2))) {
-    col <- rownames(mod2)[i]
-    vec <- x[[col]]
-    w <- mod2[i, 1]
-    w_vec[[i]] <- vec * w
-  }
-  res <- w_vec %>% purrr::reduce(rbind) %>% colSums() + coef[1, ]
-  return(res)
-}
-
 clinical <- bind_rows(val, dis) %>%
   distinct() %>%
   separate(`TARGET USI`, into = c(NA, NA, "patient_id"), sep = "-")
