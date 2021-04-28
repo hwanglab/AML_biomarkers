@@ -24,6 +24,7 @@
 DoLassoModel <- function(df, outcome, exclude = NULL) {
   o <- rlang::enquo(outcome)
   e <- rlang::enquo(exclude)
+  df <- as_tibble(df)
   
   if (rlang::quo_is_null(e)) {
     data <- dplyr::select(df, -!!o)
