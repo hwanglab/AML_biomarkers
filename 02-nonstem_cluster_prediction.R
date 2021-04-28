@@ -34,13 +34,15 @@ diagnosis <- DoDimensionReductions(diagnosis, batch_vars = c("seq_batch", "sort_
 diagnosis[["clusters"]] <- Idents(diagnosis)
 
 saveRDS(diagnosis, file = here("seurat_diagnosis_nonstem.Rds"))
+diagnosis <- readRDS(here("seurat_diagnosis_nonstem.Rds"))
 
-FindClusterFreq(diagnosis[[]], c("patient_id", "prognosis"), "clusters") %>%
+wilcox_clusters <- FindClusterFreq(diagnosis[[]], c("patient_id", "prognosis"), "clusters") %>%
   group_by(cluster) %>%
   summarise(pval = wilcox.test(freq ~ prognosis)$p.value, .groups = "keep") %>%
-  arrange(pval)
+  filter(pval <= 0.05) %>%
+  pull(cluster)
 
-FindClusterFreq(diagnosis[[]], c("patient_id", "prognosis"), "sct_clusters") %>%
+freq <- FindClusterFreq(diagnosis[[]], c("patient_id", "prognosis"), "sct_clusters") %>%
   group_by(cluster) %>%
   dplyr::select(patient_id, freq, cluster)
 
@@ -49,8 +51,6 @@ summarise(freq,
           med = median(freq),
           q1 = quantile(freq)[2],
           q3 = quantile(freq)[4])
-
-wilcox_clusters <- c("17", "3", "29", "5", "23", "18", "33", "26")
 
 ReturnDifferences <- . %>%
   #mutate(freq = scale(freq, center = FALSE)) %>%
@@ -101,21 +101,27 @@ cibersort_data2 <- rbind(paste0("cluster", Idents(seurat_down)), cibersort_data)
 write.table(cibersort_data2, file = here("cibersort_diagnosis_nonstem.txt"), quote = FALSE, sep = "\t")
 
 ## LASSO Model with CIBERSORT ----
-cibersort <- read_tsv(here("cibersort_results/cibersort_nonstem_target_results.txt")) %>%
+sig_clusters <- survival_models %>%
+  filter(wilcox == "wilcox_sig" & chi_sig == "chi_sig") %>%
+  pull(cluster) %>%
+  paste0("cluster", .)
+
+target_ciber <- read_tsv(here("cibersort_results/CIBERSORTx_target_online_Results.txt")) %>%
   separate(col = "Mixture", into = c(NA, NA, "patient_id")) %>%
+  select(all_of(sig_clusters), patient_id) %>%
   inner_join(clinical)
 
-summarise(cibersort, across(.cols = c("cluster18", "cluster23", "cluster5"),
+summarise(target_ciber, across(.cols = sig_clusters,
                             .fns = c(x = mean, med = median)))
 
-cibersort %>%
+target_ciber %>%
   mutate(across(where(is_character), str_to_lower)) %>%
   filter(`FLT3/ITD positive?` == "yes") %>%
   mutate(status = if_else(`First Event` == "relapse", 1, 0),
-         across(.cols = c("cluster18", "cluster23", "cluster5"),
+         across(.cols = starts_with("cluster"),
                 .fns = ~ if_else(.x >= mean(.x, na.rm = TRUE), "High", "Low"))) %>%
-  dplyr::select(`Event Free Survival Time in Days`, status, cluster18,
-                cluster23, cluster5, patient_id, `FLT3/ITD positive?`) %>%
+  dplyr::select(`Event Free Survival Time in Days`, status, 
+                all_of(sig_clusters), patient_id, `FLT3/ITD positive?`) %>%
   remove_missing() %>%
   pivot_longer(cols = starts_with("cluster")) %>%
   group_by(name) %>%
@@ -125,121 +131,319 @@ cibersort %>%
          p_val = map_dbl(survival, CalculatePValues)) %>%
   arrange(p_val)
 
-lasso_data <- cibersort %>%
-  mutate(across(where(is_character), str_to_lower)) %>%
-  filter(`FLT3/ITD positive?` == "yes")
+### Train on TARGET (train) ----
 
-lasso_model <- DoLassoModel(lasso_data,
+target_ciber_split <- target_ciber %>%
+  mutate(across(where(is_character), str_to_lower)) %>%
+  filter(`FLT3/ITD positive?` == "yes") %>%
+  split_df(y = "Event Free Survival Time in Days", ratios = c(0.7, 0.3))
+
+lasso_model <- DoLassoModel(target_ciber_split$train,
                             `Event Free Survival Time in Days`,
-                            exclude = c(`P-value`:RMSE,
-                                        matches("^Year|^Age|^Overall"),
+                            exclude = c(matches("^Year|^Age|^Overall"),
                                         where(is_character)))
 
 coef(lasso_model)
 
-
-score <- cibersort %>%
-  mutate(across(where(is_character), str_to_lower)) %>%
-  filter(`FLT3/ITD positive?` == "yes") %>%
-  dplyr::select(cluster18, cluster23, cluster5, `WBC at Diagnosis`,
-                `Bone marrow leukemic blast percentage (%)`,
-                `Peripheral blasts (%)`, `Cytogenetic Complexity`, `First Event`,
-                `FLT3/ITD allelic ratio`, `Event Free Survival Time in Days`) %>%
+target_ciber_split$train <- target_ciber_split$train %>%
+  as_tibble() %>%
   mutate(status = if_else(`First Event` == "relapse", 1, 0),
-         `First Event` = NULL,
-         across(.fns = as.numeric)) %>%
-  remove_missing() %>%
+         `First Event` = NULL) %>%
   mutate(score = UseLASSOModelCoefs(cur_data(), coef(lasso_model)),
          score_bin = if_else(score >= median(score), "High", "Low"))
 
-DoSurvialAnalysis(score, score$`Event Free Survival Time in Days`, score$status, score$score)
+target_train <- DoSurvialAnalysis(target_ciber_split$train,
+                  `Event Free Survival Time in Days`,
+                  status,
+                  score,
+                  group_by = score_bin,
+                  description = "TARGET Training",
+                  lasso = lasso_model)
 
-score_survival <- survfit(Surv(`Event Free Survival Time in Days`, status) ~ score_bin, data = score)
-survdiff(Surv(`Event Free Survival Time in Days`, status) ~ score_bin, data = score)
-coxph(Surv(`Event Free Survival Time in Days`, status) ~ score, data = score)
+target_train_os <- DoSurvialAnalysis(target_ciber_split$train,
+                                     `Overall Survival Time in Days`,
+                                     status,
+                                     score,
+                                     group_by = score_bin,
+                                     description = "TARGET Training",
+                                     lasso = lasso_model)
 
-pdf(here("18-23-cibersort_score_target.pdf"))
-ggsurvplot(data = score,
-           fit = score_survival, 
-           xlab = "Days", 
-           ylab = "Event Free Survival Probibility",
-           risk.table = TRUE)
+### Test on TARGET (test) ----
+target_ciber_split$test <- target_ciber_split$test %>%
+  as_tibble() %>%
+  mutate(status = if_else(`First Event` == "relapse", 1, 0),
+         `First Event` = NULL) %>%
+  mutate(score = UseLASSOModelCoefs(cur_data(), coef(lasso_model)),
+         score_bin = if_else(score >= median(score), "High", "Low"))
+
+target_test <- DoSurvialAnalysis(target_ciber_split$test,
+                  `Event Free Survival Time in Days`,
+                  status,
+                  score,
+                  group_by = score_bin,
+                  description = "TARGET Test",
+                  lasso = lasso_model)
+
+
+
+target_test_os <- DoSurvialAnalysis(target_ciber_split$test,
+                                    `Overall Survival Time in Days`,
+                                    status,
+                                    score,
+                                    group_by = score_bin,
+                                    description = "TARGET Training",
+                                    lasso = lasso_model)
+
+### Test on TCGA ----
+
+tcga_ciber <- read_tsv(here("cibersort_results/CIBERSORTx_tcga_Results.txt"))
+tcga_ann <- read_tsv(here("tcga/clinical.cart.2021-04-22/clinical.tsv"), na = "'--")
+
+tcga_ciber <- tcga_ciber %>%
+  left_join(tcga_ann2, by = c("Mixture" = "case_submitter_id")) %>%
+  filter(flt3_status == "Positive") %>%
+  mutate(score = UseLASSOModelCoefs(cur_data(), coef(lasso_model)),
+         score_bin = if_else(score >= median(score), "High", "Low"),
+         status = if_else(vital_status == "Dead", 1, 0),
+         days_to_death = as.numeric(days_to_death.x))
+
+tcga_surv <- DoSurvialAnalysis(tcga_ciber,
+                                 days_to_death,
+                                 status,
+                                 score,
+                                 group_by = score_bin,
+                                 description = "TCGA (33% features present)",
+                                 lasso = lasso_model)
+
+### Test on BeatAML ----
+
+beat_aml_clinical <- read_tsv(here("aml_ohsu_2018/data_clinical_sample.txt"), skip = 4)
+beat_aml_survival <- read_tsv(here("aml_ohsu_2018/KM_Plot__Overall_Survival__(months).txt"))
+beat_aml_clinical2 <- inner_join(beat_aml_clinical, beat_aml_survival, by = c("PATIENT_ID" = "Patient ID")) %>%
+  mutate(status = if_else(SAMPLE_TIMEPOINT == "Relapse", 1, 0)) %>%
+  dplyr::select(SAMPLE_ID, FLT3_ITD_CONSENSUS_CALL, OS_MONTHS, PB_BLAST_PERCENTAGE, status) %>%
+  rename(`Peripheral blasts (%)` = PB_BLAST_PERCENTAGE)
+
+beat_aml_ciber <- read_tsv(here("cibersort_results/CIBERSORTx_beatAML_online.txt")) %>%
+  left_join(beat_aml_clinical2, by = c("Mixture" = "SAMPLE_ID")) %>%
+  filter(FLT3_ITD_CONSENSUS_CALL == "Positive") %>%
+  mutate(score = UseLASSOModelCoefs(cur_data(), coef(lasso_model)),
+         score_bin = if_else(score >= mean(score, na.rm = TRUE), "High", "Low"),
+         OS_days = OS_MONTHS * (365.25 / 12))
+
+beat_surv <- DoSurvialAnalysis(beat_aml_ciber,
+                               OS_days,
+                               status,
+                               score,
+                               group_by = score_bin,
+                               description = "BeatAML (67% features present)",
+                               lasso = lasso_model)
+
+# print plots
+
+pdf(file = here("plots/CIBERSORT_survival.pdf"))
+target_train$plot
+target_test$plot
+target_train_os$plot
+target_test_os$plot
+tcga_surv$plot
+beat_surv$plot
 graphics.off()
 
+## LASSO Model with ONLY CIBERSORTx features ----
 
-## LASSO Model with features (dont use) ----
-gep <- read_tsv(here("cibersort_results/cibersort_nonstem_gep.txt"))
+target_ciber_no_filter <- read_tsv(here("cibersort_results/CIBERSORTx_target_online_Results.txt")) %>%
+  separate(col = "Mixture", into = c(NA, NA, "patient_id")) %>%
+  inner_join(clinical)
 
-genes <- gep %>%
-  dplyr::select(cluster18, cluster23, NAME) %>%
-  filter(cluster18 != 1 | cluster23 != 1) %>%
-  filter(cluster18 == 1 | cluster23 == 1) %>%
-  pull(NAME)
-
-target <- read_tsv(file = here("target_data.txt"))
-
-clinical2 <- dplyr::select(clinical, `WBC at Diagnosis`, `Bone marrow leukemic blast percentage (%)`,
-                    `Peripheral blasts (%)`, `Cytogenetic Complexity`,
-                    `FLT3/ITD allelic ratio`, `Event Free Survival Time in Days`, `FLT3/ITD positive?`, patient_id)
-
-
-target_data <- target %>%
-  transposeDF(rowname_col = "patient") %>%
-  dplyr::select(patient, any_of(genes)) %>%
-  mutate(across(.cols = !any_of("patient"), .fns = as.numeric)) %>%
-  separate(col = "patient", into = c(NA, NA, "patient_id", NA, NA)) %>%
-  inner_join(clinical) %>%
+target_ciber_no_filter %>%
   mutate(across(where(is_character), str_to_lower)) %>%
   filter(`FLT3/ITD positive?` == "yes") %>%
-  mutate(`FLT3/ITD allelic ratio` = as.numeric(`FLT3/ITD allelic ratio`))
+  mutate(status = if_else(`First Event` == "relapse", 1, 0),
+         across(.cols = starts_with("cluster"),
+                .fns = ~ if_else(.x >= mean(.x, na.rm = TRUE), "High", "Low"))) %>%
+  dplyr::select(`Event Free Survival Time in Days`, status, 
+                starts_with("cluster"), patient_id, `FLT3/ITD positive?`) %>%
+  remove_missing() %>%
+  pivot_longer(cols = starts_with("cluster")) %>%
+  group_by(name) %>%
+  nest() %>%
+  mutate(survival = map(data, ~ survdiff(Surv(`Event Free Survival Time in Days`, status) ~ value, data = .x))) %>%
+  mutate(chi_sq = map_dbl(survival, ~ .x[["chisq"]]),
+         p_val = map_dbl(survival, CalculatePValues)) %>%
+  arrange(p_val)
 
-lasso_data_full <- target_data %>%
-  mutate(across(.fns = as.numeric)) %>%
-  remove_missing()
-  
-lasso_model_genes <- DoLassoModel(lasso_data_full, `Event Free Survival Time in Days`)
+### Train on TARGET (train) ----
 
-genes_selected <- coef(lasso_model_genes) %>% as.data.frame() %>% filter(s0 != 0) %>% rownames()
+target_ciber_nf_split <- target_ciber_no_filter %>%
+  mutate(across(where(is_character), str_to_lower)) %>%
+  filter(`FLT3/ITD positive?` == "yes") %>%
+  split_df(y = "Event Free Survival Time in Days", ratios = c(0.7, 0.3))
 
-lasso_data_reduced <- lasso_data_full %>%
-  dplyr::select(any_of(genes_selected), `WBC at Diagnosis`, `Bone marrow leukemic blast percentage (%)`,
-                           `Peripheral blasts (%)`, `Cytogenetic Complexity`,
-                           `FLT3/ITD allelic ratio`, `Event Free Survival Time in Days`)
-lasso_model_selected <- cv.glmnet(dplyr::select(lasso_data_reduced, -`Event Free Survival Time in Days`) %>% as.matrix, pull(lasso_data_reduced, `Event Free Survival Time in Days`))
+lasso_model_nf <- DoLassoModel(target_ciber_nf_split$train,
+                            `Event Free Survival Time in Days`,
+                            exclude = c(matches("^Year|^Age|^Overall|^WBC|%"),
+                                        where(is_character),
+                                        `P-value`:RMSE))
 
-lasso_model_selected_final <- glmnet(dplyr::select(lasso_data_reduced, -`Event Free Survival Time in Days`) %>% as.matrix, pull(lasso_data_reduced, `Event Free Survival Time in Days`), lambda = lasso_model_selected$lambda.min)
-coef(lasso_model_selected_final)
+coef(lasso_model_nf)
 
-score_features <- target_data %>%
-  mutate(score = UseLASSOModelCoefs(cur_data(), coef(lasso_model)),
-         score_bin = if_else(score >= mean(score), "High", "Low"),
-         status = if_else(`First Event` == "relapse", 1, 0)) %>%
-  dplyr::select(score, score_bin, `Event Free Survival Time in Days`, status)
+target_ciber_nf_split$train <- target_ciber_nf_split$train %>%
+  as_tibble() %>%
+  mutate(status = if_else(`First Event` == "relapse", 1, 0),
+         `First Event` = NULL) %>%
+  mutate(score = UseLASSOModelCoefs(cur_data(), coef(lasso_model_nf)),
+         score_bin = if_else(score >= median(score), "High", "Low"))
 
-score_survival <- survfit(Surv(`Event Free Survival Time in Days`, status) ~ score_bin, data = score_features)
-survdiff(Surv(`Event Free Survival Time in Days`, status) ~ score_bin, data = score_features)
+target_train_nf <- DoSurvialAnalysis(target_ciber_split$train,
+                                  `Event Free Survival Time in Days`,
+                                  status,
+                                  score,
+                                  group_by = score_bin,
+                                  description = "TARGET Training",
+                                  lasso = lasso_model_nf)
 
-pdf(here("18-23-features_score_target.pdf"))
-ggsurvplot(data = score_features,
-           fit = score_survival, 
-           xlab = "Days", 
-           ylab = "Event Free Survival Probibility",
-           risk.table = TRUE)
+target_train_os_nf <- DoSurvialAnalysis(target_ciber_nf_split$train,
+                                        `Overall Survival Time in Days`,
+                                        status,
+                                        score,
+                                        group_by = score_bin,
+                                        description = "TARGET Training",
+                                        lasso = lasso_model_nf)
+
+### Test on TARGET (test) ----
+
+target_ciber_nf_split$test <- target_ciber_nf_split$test %>%
+  as_tibble() %>%
+  mutate(status = if_else(`First Event` == "relapse", 1, 0),
+         `First Event` = NULL) %>%
+  mutate(score = UseLASSOModelCoefs(cur_data(), coef(lasso_model_nf)),
+         score_bin = if_else(score >= median(score), "High", "Low"))
+
+target_test_nf <- DoSurvialAnalysis(target_ciber_nf_split$test,
+                                 `Event Free Survival Time in Days`,
+                                 status,
+                                 score,
+                                 group_by = score_bin,
+                                 description = "TARGET Test",
+                                 lasso = lasso_model_nf)
+
+target_test_os_nf <- DoSurvialAnalysis(target_ciber_nf_split$test,
+                                    `Overall Survival Time in Days`,
+                                    status,
+                                    score,
+                                    group_by = score_bin,
+                                    description = "TARGET Training",
+                                    lasso = lasso_model_nf)
+
+### Test on TCGA ----
+
+tcga_ciber <- read_tsv(here("cibersort_results/CIBERSORTx_tcga_Results.txt"))
+tcga_ann <- read_tsv(here("tcga/clinical.cart.2021-04-22/clinical.tsv"), na = "'--")
+
+tcga_ciber <- tcga_ciber %>%
+  left_join(tcga_ann2, by = c("Mixture" = "case_submitter_id")) %>%
+  filter(flt3_status == "Positive") %>%
+  mutate(score = UseLASSOModelCoefs(cur_data(), coef(lasso_model_nf)),
+         score_bin = if_else(score >= median(score), "High", "Low"),
+         status = if_else(vital_status == "Dead", 1, 0),
+         days_to_death = as.numeric(days_to_death.x))
+
+tcga_surv_nf <- DoSurvialAnalysis(tcga_ciber,
+                               days_to_death,
+                               status,
+                               score,
+                               group_by = score_bin,
+                               description = "TCGA (33% features present)",
+                               lasso = lasso_model_nf)
+
+### Test on BeatAML ----
+beat_aml_ciber_nf <- read_tsv(here("cibersort_results/CIBERSORTx_beatAML_online.txt")) %>%
+  left_join(beat_aml_clinical2, by = c("Mixture" = "SAMPLE_ID")) %>%
+  filter(FLT3_ITD_CONSENSUS_CALL == "Positive") %>%
+  mutate(score = UseLASSOModelCoefs(cur_data(), coef(lasso_model_nf)),
+         score_bin = if_else(score >= mean(score, na.rm = TRUE), "High", "Low"),
+         OS_days = OS_MONTHS * (365.25 / 12))
+
+beat_surv_nf <- DoSurvialAnalysis(beat_aml_ciber_nf,
+                               OS_days,
+                               status,
+                               score,
+                               group_by = score_bin,
+                               description = "BeatAML (67% features present)",
+                               lasso = lasso_model)
+
+# print plots
+pdf(file = here("plots/CIBERSORT_survival_no_filtering.pdf"))
+target_train_nf$plot
+target_test_nf$plot
+target_train_os_nf$plot
+target_test_os_nf$plot
+tcga_surv_nf$plot
+beat_surv_nf$plot
 graphics.off()
+
+## LASSO Model with ONLY CIBERSORTx features ----
+
+### Train on TCGA ----
+
+tcga_ciber <- read_tsv(here("cibersort_results/CIBERSORTx_tcga_Results.txt"))
+tcga_ciber <- left_join(tcga_ciber, tcga_ann2, by = c("Mixture" = "case_submitter_id"))
+
+lasso_model_nf <- DoLassoModel(tcga_ciber,
+                               days_to_death,
+                               exclude = c(matches("^Year|^Age|^Overall|^WBC|%|^lab_|^year_|^age_|cytogen|follow|birth|initial|diagnosis|result"),
+                                           where(is_character),
+                                           where(is_logical),
+                                           where(lubridate::is.instant),
+                                           `P-value`:RMSE,
+                                           Mixture,
+                                           patient_id,
+                                           hydroxyurea_agent_administered_day_count,
+                                           cumulative_agent_total_dose))
+
+tcga_res <- tcga_ciber %>%
+  rename(case_submitter_id = Mixture) %>%
+  filter(flt3_status == "Positive") %>%
+  mutate(score = UseLASSOModelCoefs(cur_data(), coef(lasso_model_nf)),
+         score_bin = if_else(score >= median(score), "High", "Low"),
+         status = if_else(vital_status == "Dead", 1, 0),
+         days_to_death = as.numeric(days_to_death))
+
+tcga_surv_nf <- DoSurvialAnalysis(tcga_res,
+                                  days_to_death,
+                                  status,
+                                  score,
+                                  group_by = score_bin,
+                                  description = "TCGA",
+                                  lasso = lasso_model_nf)
+
+#$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$#
+### LASSO MODEL NOT SIGNIFICANT ###
+###       ENDING ANALYSIS       ###
+#$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$#
 
 ## LASSO Model using Features ----
 clinical2 <- dplyr::select(clinical, `WBC at Diagnosis`, `Bone marrow leukemic blast percentage (%)`,
                            `Peripheral blasts (%)`, `Cytogenetic Complexity`,
-                           `FLT3/ITD allelic ratio`, `Event Free Survival Time in Days`, `FLT3/ITD positive?`, patient_id, `First Event`)
+                           `FLT3/ITD allelic ratio`, `Event Free Survival Time in Days`, `FLT3/ITD positive?`, patient_id, `First Event`,
+                           `Overall Survival Time in Days`)
 
-target_before_split <- data.table::transpose(target) %>%
-  slice(2:nrow(.)) %>%
-  as_tibble() %>%
-  set_names(target$GeneSymbol) %>%
-  mutate(patient = colnames(target[2:ncol(target)]), .before = 1) %>%
-  dplyr::select(patient, any_of(genes)) %>%
+gep <- read_tsv(here("cibersort_in/nonstem_GEP.txt"))
+
+genes <- gep %>%
+  dplyr::select(cluster18, cluster23, genesymbols) %>%
+  filter(cluster18 != 1 | cluster23 != 1) %>%
+  filter(cluster18 == 1 | cluster23 == 1) %>%
+  pull(genesymbols)
+
+target <- read_tsv(file = here("cibersort_in/target_data.txt"))
+
+target_before_split <- target %>%
+  transposeDF() %>%
+  dplyr::select(samples, any_of(genes)) %>%
   mutate(across(.cols = 2:ncol(.), .fns = as.numeric)) %>%
-  separate(col = "patient", into = c(NA, NA, "patient_id", NA, NA)) %>%
+  separate(col = "samples", into = c(NA, NA, "patient_id", NA, NA)) %>%
   inner_join(clinical2) %>%
   mutate(across(where(is_character), str_to_lower)) %>%
   filter(`FLT3/ITD positive?` == "yes") %>%
@@ -249,25 +453,19 @@ target_before_split <- data.table::transpose(target) %>%
 
 target_split <- split_df(target_before_split, y = "Event Free Survival Time in Days", ratios = c(0.7, 0.3))
 
-### Train on TARGET (training set) ----
+### Train on TARGET (train) ----
 target_model <- DoLassoModel(target_split$train,
              outcome = `Event Free Survival Time in Days`,
-             exclude = `First Event`)
-
-#test function
-DoLassoModel(target_split$train,
-             outcome = `Event Free Survival Time in Days`,
-             exclude = c(`First Event`, AAR2, `FLT3/ITD allelic ratio`))
+             exclude = c(`First Event`, `Overall Survival Time in Days`))
 
 coef(target_model)
 
 target_train_score <- target_split$train %>%
-  mutate(score = UseLASSOModelCoefs(.data, coef(target_model)),
+  mutate(score = UseLASSOModelCoefs(cur_data(), coef(target_model)),
          score_bin = if_else(score >= median(score), "High", "Low"),
-         status = if_else(`First Event` == "relapse", 1, 0)) %>%
-  dplyr::select(score, score_bin, `Event Free Survival Time in Days`, status)
+         status = if_else(`First Event` == "relapse", 1, 0))
 
-DoSurvialAnalysis(target_train_score,
+target_train_surv <- DoSurvialAnalysis(target_train_score,
                   time = `Event Free Survival Time in Days`,
                   status = status,
                   predictor = score,
@@ -275,14 +473,21 @@ DoSurvialAnalysis(target_train_score,
                   description = "TARGET Training Data",
                   lasso = target_model)
 
-## Test with TARGET (Test) ----
-target_test_score <- target_split$test %>%
-  mutate(score = UseLASSOModelCoefs(.data, coef(target_model)),
-         score_bin = if_else(score >= median(score), "High", "Low"),
-         status = if_else(`First Event` == "relapse", 1, 0)) %>%
-  dplyr::select(score, score_bin, `Event Free Survival Time in Days`, status)
+target_train_surv_os <- DoSurvialAnalysis(target_train_score,
+                                       time = `Overall Survival Time in Days`,
+                                       status = status,
+                                       predictor = score,
+                                       group_by = score_bin,
+                                       description = "TARGET Training Data",
+                                       lasso = target_model)
 
-DoSurvialAnalysis(target_test_score,
+### Test with TARGET (test) ----
+target_test_score <- target_split$test %>%
+  mutate(score = UseLASSOModelCoefs(cur_data(), coef(target_model)),
+         score_bin = if_else(score >= median(score), "High", "Low"),
+         status = if_else(`First Event` == "relapse", 1, 0)) 
+
+target_test_surv <- DoSurvialAnalysis(target_test_score,
                   time = `Event Free Survival Time in Days`,
                   status = status,
                   predictor = score,
@@ -290,36 +495,35 @@ DoSurvialAnalysis(target_test_score,
                   description = "TARGET Test Data",
                   lasso = target_model)
 
-
+target_test_surv_os <- DoSurvialAnalysis(target_test_score,
+                                      time = `Overall Survival Time in Days`,
+                                      status = status,
+                                      predictor = score,
+                                      group_by = score_bin,
+                                      description = "TARGET Test Data",
+                                      lasso = target_model)
 
 ### Test with TCGA on TARGET model ----
-tcga_data <- read_tsv(here("tcga_cibersort.tsv"))
-tcga_data <- transposeDF(tcga_data)
+tcga_data <- read_tsv(here("cibersort_in/tcga_cibersort.txt"))
+tcga_data <- transposeDF(tcga_data, rowname_col = "case_submitter_id")
 
 annotated_tcga <- read_tsv(here("tcga/clinical.cart.2021-04-22/clinical.tsv"), na = "'--") %>%
   right_join(tcga_data) %>%
-  mutate(annotated_tcga, 
-         score = UseLASSOModelCoefs(cur_data(), coef(target_model)),
+  mutate(score = UseLASSOModelCoefs(cur_data(), coef(target_model)),
          score_bin = if_else(score >= median(score), "High", "Low"),
          status = if_else(vital_status == "Dead", 1, 0))
 
-DoSurvialAnalysis(annotated_tcga,
+tcga_surv <- DoSurvialAnalysis(annotated_tcga,
                   time = days_to_death,
                   status = status,
                   predictor = score,
                   group_by = score_bin,
-                  description = "TCGA Data",
+                  description = "TCGA Data (4.8% features present)",
                   lasso = target_model)
 
 ### Test with BeatAML on TARGET model ----
 
 beat_aml <- read_tsv(here("aml_ohsu_2018/data_RNA_Seq_expression_cpm.txt"))
-beat_aml_clinical <- read_tsv(here("aml_ohsu_2018/data_clinical_sample.txt"), skip = 4)
-beat_aml_survival <- read_tsv(here("aml_ohsu_2018/KM_Plot__Overall_Survival__(months).txt"))
-beat_aml_clinical2 <- inner_join(beat_aml_clinical, beat_aml_survival, by = c("PATIENT_ID" = "Patient ID")) %>%
-  mutate(status = if_else(SAMPLE_TIMEPOINT == "Relapse", 1, 0)) %>%
-  dplyr::select(SAMPLE_ID, FLT3_ITD_CONSENSUS_CALL, OS_MONTHS, PB_BLAST_PERCENTAGE, status) %>%
-  rename(`Peripheral blasts (%)` = PB_BLAST_PERCENTAGE)
 
 beat_aml_data <- beat_aml %>%
   dplyr::select(-Entrez_Gene_Id) %>%
@@ -330,12 +534,21 @@ beat_aml_data <- beat_aml %>%
   mutate(across(.cols = !any_of(c("FLT3_ITD_CONSENSUS_CALL", "SAMPLE_ID")), .fns = as.numeric),
          OS_DAYS = OS_MONTHS * 365.25 / 12,
          score = UseLASSOModelCoefs(cur_data(), coef(target_model)),
-         score_bin = if_else(beat_aml_data$score >= mean(beat_aml_data$score), "High", "Low"))
+         score_bin = if_else(score >= mean(score), "High", "Low"))
 
-DoSurvialAnalysis(beat_aml_data,
+beataml_surv <- DoSurvialAnalysis(beat_aml_data,
                   time = OS_DAYS,
                   status = status,
                   predictor = score,
                   group_by = score_bin,
-                  description = "Beat-AML Data",
+                  description = "Beat-AML Data (85.7% features present)",
                   lasso = target_model)
+
+pdf(here("plots/features_EFS_survival.pdf"))
+target_train_surv$plot
+target_train_surv_os$plot
+target_test_surv$plot
+target_test_surv_os$plot
+tcga_surv$plot
+beataml_surv$plot
+graphics.off()
