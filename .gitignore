@@ -8,3 +8,6 @@ target/
 tcga/
 aml_ohsu_2018/
 plots/
+cibersort_*
+SRA*
+Sra*
