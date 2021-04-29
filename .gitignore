@@ -2,7 +2,7 @@
 .Rhistory
 .RData
 .Ruserdata
-.Rds
+*.Rds
 .RData
 target/
 tcga/
@@ -11,3 +11,6 @@ plots/
 cibersort_*
 SRA*
 Sra*
+clinical_info
+nationwide*
+ptn_info.txt
