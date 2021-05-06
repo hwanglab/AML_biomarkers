@@ -10,31 +10,34 @@ library(scorecard)
 library(glmnet)
 library(tidyverse)
 library(furrr)
+library(xfun)
 
-seurat <- LoadH5Seurat(file.path(Sys.getenv("AML_DATA"), "05_seurat_annotated.h5Seurat"),
-                       assays = c("ADT", "SCT"))
-
-meta <- seurat[["patient_id"]] %>% rownames_to_column()
 val <- read_excel(here("clinical_info/TARGET_AML_ClinicalData_Validation_20181213.xlsx"))
 dis <- read_excel(here("clinical_info/TARGET_AML_ClinicalData_Discovery_20181213.xlsx"))
 seq <- read_excel(file.path("../preprocessing/sample_info/Global Demultiplexing and Annotation.xlsx"))
 
-clinical <- bind_rows(val, dis) %>%
-  distinct() %>%
-  separate(`TARGET USI`, into = c(NA, NA, "patient_id"), sep = "-")
+cache_rds(expr = {
+  seurat <- LoadH5Seurat(file.path(Sys.getenv("AML_DATA"), "05_seurat_annotated.h5Seurat"),
+                        assays = c("ADT", "SCT"))
 
-data <- filter(clinical, patient_id %in% pull(seq, patient_id))
+  meta <- seurat[["patient_id"]] %>% rownames_to_column()
 
-seurat@misc[["patient_data"]] <- data
-seurat@misc[["target_data"]] <- clinical
+  clinical <- bind_rows(val, dis) %>%
+    distinct() %>%
+    separate(`TARGET USI`, into = c(NA, NA, "patient_id"), sep = "-")
 
-diagnosis <- subset(seurat, timepoint == "Diagnosis" & stemness == "Nonstem")
-diagnosis <- DoDimensionReductions(diagnosis, batch_vars = c("seq_batch", "sort_batch"))
+  data <- filter(clinical, patient_id %in% pull(seq, patient_id))
 
-diagnosis[["clusters"]] <- Idents(diagnosis)
+  seurat@misc[["patient_data"]] <- data
+  seurat@misc[["target_data"]] <- clinical
 
-saveRDS(diagnosis, file = here("seurat_diagnosis_nonstem.Rds"))
-diagnosis <- readRDS(here("seurat_diagnosis_nonstem.Rds"))
+  diagnosis <- subset(seurat, timepoint == "Diagnosis" & stemness == "Nonstem")
+  diagnosis <- DoDimensionReductions(diagnosis, batch_vars = c("seq_batch", "sort_batch"))
+
+  diagnosis[["clusters"]] <- Idents(diagnosis)
+  diagnosis
+  },
+  file = "02-seurat_diagnosis_nonstem.rds")
 
 wilcox_clusters <- FindClusterFreq(diagnosis[[]], c("patient_id", "prognosis"), "clusters") %>%
   group_by(cluster) %>%
