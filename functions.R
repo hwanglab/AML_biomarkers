@@ -104,7 +104,7 @@ UseLASSOModelCoefs <- function(x, coef) {
 #' Do A Kaplan-Meier Survival Analysis
 #' 
 #' @param data a dataframe (or coercible to a data.frame)
-#' @param time,status,predictor <data-masking> varibles to compute survival on
+#' @param time,status,predictor <data-masking> variables to compute survival on
 #' @param method method for statstical testing
 #' @param cox_ties method to use for ties in cox regression
 #' @param group_by <data-masking> column to group survivial on
@@ -131,6 +131,17 @@ DoSurvialAnalysis <- function(data, time, status, predictor,
   fit <- survminer::surv_fit(Surv(t, s) ~ p, data = data)
   
   surv_form <- survival::Surv(t, s) ~ p
+  
+  stat_res <- switch(EXPR = method,
+                     "cox" = survival::coxph(surv_form, data, ties = cox_ties),
+                     "chi-sq" = survival::survdiff(surv_form, data),
+                     "none" = NULL,
+                     rlang::abort("Unknown test: ", method))
+  
+  p_val <- switch(EXPR = method,
+                     "cox" = CalculatePValues.cox(stat_res),
+                     "chi-sq" = CalculatePValues.chi(stat_res),
+                     "none" = NULL)
   
   title <- paste0("Kaplan-Meier Curves for ",
                   rlang::as_name(enquo(status)),
@@ -159,6 +170,8 @@ DoSurvialAnalysis <- function(data, time, status, predictor,
     if (!is.null(subtitle1)) subtitle <- subtitle1
     if (!is.null(subtitle2)) subtitle <- subtitle2
   }
+  
+  if (method != "none") subtitle <- paste0(subtitle, "\np = ", p_val)
 
   if (rlang::quo_is_null(gb)) {
     plot <- survminer::ggsurvplot(fit,
@@ -182,11 +195,7 @@ DoSurvialAnalysis <- function(data, time, status, predictor,
                        risk.table = "abs_pct")
   }
   
-  stat_res <- switch(EXPR = method,
-                     "cox" = survival::coxph(surv_form, data, ties = cox_ties),
-                     "chi-sq" = survival::survdiff(surv_form, data),
-                     "none" = NULL,
-                     rlang::abort("Unknown test: ", method))
+
 
   return(list(plot = plot, stat = stat_res))
 } 
@@ -239,38 +248,7 @@ transposeDF <- function(df, rowname_col = NULL, colname_col = NULL) {
   else x
 }
 
-
-#' Run CIBERSORTx
-#' @param data
-#' @param email
-#' @param token
-#' @param ref_sample
-#' 
-
-RunCIBERSORT <- function() {
-  # test if docker is availible
-  tryCatch(system("docker --help", ignore.stdout = TRUE),
-           error = rlang::abort("Docker is not availible! CIBERSORTx requires docker. Please install docker."))
-  
-  data_file <- tempfile()
-  write_tsv(data, file = data_file)
-  
-  # things to do:
-  # write ref to tmp
-  # enable doing ref
-  # get token from enviorment var
-  
-  docker_cmd <- paste0("docker run -v ", tempdir(), ":/src/data ",
-                       "-v ", tempdir(), ":/src/outdir cibersort/fractions ",
-                       "--username ", email, " ",
-                       "--token", token, " ",
-                       "--refsample ", ref_sample, " ",
-                       "--mixture ", data_file, " ",
-                       "--fraction 0 --rmbatchSmode TRUE")
-  
-}
-
-CalculatePValues <- function(x) {
+CalculatePValues.chi <- function(x) {
   if (is.matrix(x$obs)) {
     otmp <- apply(x$obs, 1, sum)
     etmp <- apply(x$exp, 1, sum)
@@ -285,6 +263,67 @@ CalculatePValues <- function(x) {
   return(pval)
 }
 
-
+CalculatePValues.cox <- function(x) {
+  logtest <- -2 * (x$loglik[1] - x$loglik[2])
+  if (is.null(x$df)) 
+    df <- sum(!is.na(coef))
+  else df <- round(sum(x$df), 2)
   
+  pval <- format.pval(pchisq(logtest, 
+                     df, lower.tail = FALSE))
+  return(pval)
+}
 
+RunStats <- function(res, pathway, p = 0.01, fc = 0.25) {
+  clusters <- colnames(res) %>%
+    tibble::as_tibble_col(column_name = "names") %>%
+    tidyr::separate(names, into = c("cluster", "rep"), sep = "_") %>%
+    dplyr::pull(cluster) %>%
+    unique()
+  
+  top <- list(0)
+  plot <- list(0)
+  pb <- progress::progress_bar$new(total = length(clusters),
+                                   format = "[:bar] :percent :elapsed")
+  
+  rsinglecell:::PackageCheck("limma")
+  rsinglecell:::PackageCheck("EnhancedVolcano")
+  for (i in seq_along(clusters)) {
+    pb$tick()
+    new_names <- colnames(res) %>%
+      tibble::as_tibble_col(column_name = "names") %>%
+      tidyr::separate(names, into = c("cluster", "rep"), sep = "_") %>%
+      dplyr::group_by(cluster2 = ifelse(cluster == clusters[[i]],
+                                        yes = paste0("cluster", clusters[[i]]),
+                                        no = paste0("not", clusters[[i]]))) %>%
+      dplyr::mutate(rep2 = row_number()) 
+    
+    design <- model.matrix(~ 0 + new_names$cluster2)
+    colnames(design) <- colnames(design) %>% str_remove("new_names\\$cluster2")
+    con_str <- c(paste0("cluster", clusters[[i]], " - not", clusters[[i]]))
+    contrasts <- limma::makeContrasts(contrasts = con_str, levels = design)
+    
+    fit <- limma::lmFit(res, design)
+    fit <- limma::contrasts.fit(fit, contrasts = contrasts)
+    fit <- limma::eBayes(fit)
+    
+    top[[i]] <- limma::topTable(fit, n = Inf) %>% mutate(cluster = clusters[[i]])
+    
+    labs <- stringr::str_remove(rownames(top[[i]]), "^(GOBP|HALLMARK|KEGG|REACTOME)_")
+    
+    plot[[i]] <- EnhancedVolcano::EnhancedVolcano(top[[i]],
+                                                  lab = labs,
+                                                  x = "logFC",
+                                                  y = "adj.P.Val",
+                                                  subtitle = paste0("Cluster ", clusters[[i]]),
+                                                  title = paste0("GSVA results for ", pathway),
+                                                  pCutoff = p,
+                                                  FCcutoff = fc,
+                                                  xlim = c(-1, 1),
+                                                  labSize = 1.75,
+                                                  drawConnectors = TRUE)
+  }
+  top <- top %>% purrr::map(rownames_to_column, var = "geneset") %>% purrr::reduce(bind_rows)
+  plots <- patchwork::wrap_plots(plot)
+  return(list("Top Table" = top, plots = plot))
+}
