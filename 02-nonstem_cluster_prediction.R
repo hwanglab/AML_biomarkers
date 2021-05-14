@@ -8,17 +8,29 @@ library(survival)
 library(survminer)
 library(scorecard)
 library(glmnet)
-library(tidyverse)
-library(furrr)
 library(xfun)
+library(msigdbr)
+library(furrr)
+library(EnhancedVolcano)
+library(tidyverse)
 
 val <- read_excel(here("clinical_info/TARGET_AML_ClinicalData_Validation_20181213.xlsx"))
 dis <- read_excel(here("clinical_info/TARGET_AML_ClinicalData_Discovery_20181213.xlsx"))
 seq <- read_excel(file.path("../preprocessing/sample_info/Global Demultiplexing and Annotation.xlsx"))
 
-cache_rds(expr = {
+clinical <- bind_rows(val, dis) %>%
+  distinct() %>%
+  separate(`TARGET USI`, into = c(NA, NA, "patient_id"), sep = "-")
+
+sig_level <- 0.10
+rerun_cibersort <- FALSE
+
+## Subset + Dimension Reductions ----
+diagnosis <- cache_rds(expr = {
   seurat <- LoadH5Seurat(file.path(Sys.getenv("AML_DATA"), "05_seurat_annotated.h5Seurat"),
                         assays = c("ADT", "SCT"))
+  
+  DefaultAssay(seurat) <- "SCT"
 
   meta <- seurat[["patient_id"]] %>% rownames_to_column()
 
@@ -39,13 +51,14 @@ cache_rds(expr = {
   },
   file = "02-seurat_diagnosis_nonstem.rds")
 
+## Find DE Clusters ----
 wilcox_clusters <- FindClusterFreq(diagnosis[[]], c("patient_id", "prognosis"), "clusters") %>%
   group_by(cluster) %>%
   summarise(pval = wilcox.test(freq ~ prognosis)$p.value, .groups = "keep") %>%
-  filter(pval <= 0.05) %>%
+  filter(pval <= sig_level) %>%
   pull(cluster)
 
-freq <- FindClusterFreq(diagnosis[[]], c("patient_id", "prognosis"), "sct_clusters") %>%
+freq <- FindClusterFreq(diagnosis[[]], c("patient_id", "prognosis"), "clusters") %>%
   group_by(cluster) %>%
   dplyr::select(patient_id, freq, cluster)
 
@@ -75,47 +88,92 @@ survival_models <- freq %>%
   nest() %>%
   mutate(survival = map(data, ~ survdiff(Surv(`Event Free Survival Time in Days`, status) ~ cluster_risk, data = .x))) %>%
   mutate(chi_sq = map_dbl(survival, ~ .x[["chisq"]]),
-         p_val = map_dbl(survival, CalculatePValues),
+         p_val = map_dbl(survival, CalculatePValues.chi),
          log_p = -log(p_val),
          freq = map_dbl(data, ~ mean(.x[["freq"]])),
          wilcox = if_else(cluster %in% wilcox_clusters, "wilcox_sig", "not_wilcox_sig"),
-         chi_sig = if_else(p_val <= 0.05, "chi_sig", "not_chi_sig"),
+         chi_sig = if_else(p_val <= sig_level, "chi_sig", "not_chi_sig"),
          sd = map_dbl(data, ~ sd(.x[["freq"]])),
          mean_diff = map_dbl(data, ReturnDifferences)) %>%
   arrange(p_val)
 
 pdf(file = here("plots/sc_cluster_survival_analysis.pdf"), width = 3, height = 5)
 ggplot(data = survival_models, mapping = aes(x = mean_diff, y = log_p)) +
-  geom_hline(yintercept = -log(0.05)) +
+  geom_hline(yintercept = -log(sig_level)) +
   geom_point() +
   theme_classic() +
-  ggrepel::geom_label_repel(data = filter(survival_models, p_val <= 0.05), mapping = aes(label = cluster)) +
+  ggrepel::geom_label_repel(data = filter(survival_models, p_val <= sig_level), mapping = aes(label = cluster)) +
   xlab("Distance Between Poor (+) and Favorable (-)") +
   ylab("-log(P value)")
 graphics.off()
 
-# export clusters for CIBERSORT
-seurat_down <- subset(diagnosis, downsample = 100)
+## Run GSVA on Clusters ----
 
-cibersort_data <- GetAssayData(seurat_down, slot = "data")
-cibersort_data <- as.data.frame(cibersort_data)
-cibersort_data2 <- rbind(paste0("cluster", Idents(seurat_down)), cibersort_data)
+gene_sets <- list(HALLMARK = msigdbr(species = "Homo sapiens", category = "H"),
+                  GO       = msigdbr(species = "Homo sapiens", category = "C5", subcategory = "BP"),
+                  REACTOME = msigdbr(species = "Homo sapiens", category = "C2", subcategory = "REACTOME"),
+                  KEGG     = msigdbr(species = "Homo sapiens", category = "C2", subcategory = "KEGG"),
+                  ONCO     = msigdbr(species = "Homo sapiens", category = "C6")) %>%
+  map(~ ListGeneSets(.x, gene_set = "name", gene_name = "symbol"))
 
-write.table(cibersort_data2, file = here("cibersort_diagnosis_nonstem.txt"), quote = FALSE, sep = "\t")
+gsva_res <- map(gene_sets, ~ RunGSVA(diagnosis, gene_sets = .x, replicates = 3))
+
+stat_res <- map2(gsva_res, names(gsva_res), RunStats, p = 0.05)
+
+pdf(file = here("plots/HALLMARK_GSVA_volcano_plots.pdf"), onefile = TRUE)
+stat_res$HALLMARK$plots
+graphics.off()
+
+pdf(file = here("plots/GO_GSVA_volcano_plots.pdf"), onefile = TRUE)
+stat_res$GO$plots
+graphics.off()
+
+pdf(file = here("plots/REACTOME_GSVA_volcano_plots.pdf"), onefile = TRUE)
+stat_res$REACTOME$plots
+graphics.off()
+
+pdf(file = here("plots/KEGG_GSVA_volcano_plots.pdf"), onefile = TRUE)
+stat_res$KEGG$plots
+graphics.off()
+
+pdf(file = here("plots/ONCO_GSVA_volcano_plots.pdf"), onefile = TRUE)
+stat_res$ONCO$plots
+graphics.off()
+
+top_tables <- map(stat_res, ~ .x[["Top Table"]])
+
+top_tables %>%
+  reduce(bind_rows) %>%
+  list("All Gene Sets" = .) %>%
+  append(top_tables) %>%
+  openxlsx::write.xlsx(file = here("outs/GSVA_DE_results.xlsx"))
+
+## Run CIBERSORTx ----
+if (rerun_cibersort) {
+  seurat_down <- subset(diagnosis, downsample = 100)
+
+  cibersort_data <- GetAssayData(seurat_down, slot = "data")
+  cibersort_data <- as.data.frame(cibersort_data)
+  cibersort_data2 <- rbind(paste0("cluster", Idents(seurat_down)), cibersort_data)
+
+  write.table(cibersort_data2, file = here("cibersort_in/nonstem_clusters.txt"), quote = FALSE, sep = "\t")
+
+  system(here("CIBERSORTx.sh"))
+}
 
 ## LASSO Model with CIBERSORT ----
 sig_clusters <- survival_models %>%
-  filter(wilcox == "wilcox_sig" & chi_sig == "chi_sig") %>%
+  filter(chi_sig == "chi_sig") %>%
   pull(cluster) %>%
   paste0("cluster", .)
 
-target_ciber <- read_tsv(here("cibersort_results/CIBERSORTx_target_online_Results.txt")) %>%
+target_ciber <- read_tsv(here("outs/cibersort_results/CIBERSORTx_target_Results.txt")) %>%
   separate(col = "Mixture", into = c(NA, NA, "patient_id")) %>%
   select(all_of(sig_clusters), patient_id) %>%
   inner_join(clinical)
 
 summarise(target_ciber, across(.cols = sig_clusters,
-                            .fns = c(x = mean, med = median)))
+                               .fns = c(x = mean, med = median)))
 
 target_ciber %>%
   mutate(across(where(is_character), str_to_lower)) %>%
@@ -131,8 +189,10 @@ target_ciber %>%
   nest() %>%
   mutate(survival = map(data, ~ survdiff(Surv(`Event Free Survival Time in Days`, status) ~ value, data = .x))) %>%
   mutate(chi_sq = map_dbl(survival, ~ .x[["chisq"]]),
-         p_val = map_dbl(survival, CalculatePValues)) %>%
-  arrange(p_val)
+         p_val = map_dbl(survival, CalculatePValues.chi)) %>%
+  arrange(p_val) %>%
+  select(name, chi_sq, p_val) %>%
+  write_csv(file = here("outs/target_single_cluster_survival.csv"))
 
 ### Train on TARGET (train) ----
 
@@ -146,7 +206,11 @@ lasso_model <- DoLassoModel(target_ciber_split$train,
                             exclude = c(matches("^Year|^Age|^Overall"),
                                         where(is_character)))
 
-coef(lasso_model)
+coef(lasso_model) %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "predictor") %>%
+  rename(coef = s0) %>%
+  write_csv(here("outs/TARGET_CIBERSORTx_LASSO_model.csv"))
 
 target_ciber_split$train <- target_ciber_split$train %>%
   as_tibble() %>%
@@ -187,8 +251,6 @@ target_test <- DoSurvialAnalysis(target_ciber_split$test,
                   description = "TARGET Test",
                   lasso = lasso_model)
 
-
-
 target_test_os <- DoSurvialAnalysis(target_ciber_split$test,
                                     `Overall Survival Time in Days`,
                                     status,
@@ -199,8 +261,8 @@ target_test_os <- DoSurvialAnalysis(target_ciber_split$test,
 
 ### Test on TCGA ----
 
-tcga_ciber <- read_tsv(here("cibersort_results/CIBERSORTx_tcga_Results.txt"))
-tcga_ann <- read_tsv(here("tcga/clinical.cart.2021-04-22/clinical.tsv"), na = "'--")
+tcga_ciber <- read_tsv(here("outs/cibersort_results/CIBERSORTx_tcga_Results.txt"))
+tcga_ann <- read_tsv(here("data/tcga/clinical.cart.2021-04-22/clinical.tsv"), na = "'--")
 
 tcga_ciber <- tcga_ciber %>%
   left_join(tcga_ann2, by = c("Mixture" = "case_submitter_id")) %>%
@@ -208,26 +270,26 @@ tcga_ciber <- tcga_ciber %>%
   mutate(score = UseLASSOModelCoefs(cur_data(), coef(lasso_model)),
          score_bin = if_else(score >= median(score), "High", "Low"),
          status = if_else(vital_status == "Dead", 1, 0),
-         days_to_death = as.numeric(days_to_death.x))
+         days_to_death = as.numeric(days_to_death))
 
 tcga_surv <- DoSurvialAnalysis(tcga_ciber,
                                  days_to_death,
                                  status,
                                  score,
                                  group_by = score_bin,
-                                 description = "TCGA (33% features present)",
+                                 description = "TCGA (50% features present)",
                                  lasso = lasso_model)
 
 ### Test on BeatAML ----
 
-beat_aml_clinical <- read_tsv(here("aml_ohsu_2018/data_clinical_sample.txt"), skip = 4)
-beat_aml_survival <- read_tsv(here("aml_ohsu_2018/KM_Plot__Overall_Survival__(months).txt"))
+beat_aml_clinical <- read_tsv(here("data/aml_ohsu_2018/data_clinical_sample.txt"), skip = 4)
+beat_aml_survival <- read_tsv(here("data/aml_ohsu_2018/KM_Plot__Overall_Survival__(months).txt"))
 beat_aml_clinical2 <- inner_join(beat_aml_clinical, beat_aml_survival, by = c("PATIENT_ID" = "Patient ID")) %>%
   mutate(status = if_else(SAMPLE_TIMEPOINT == "Relapse", 1, 0)) %>%
   dplyr::select(SAMPLE_ID, FLT3_ITD_CONSENSUS_CALL, OS_MONTHS, PB_BLAST_PERCENTAGE, status) %>%
   rename(`Peripheral blasts (%)` = PB_BLAST_PERCENTAGE)
 
-beat_aml_ciber <- read_tsv(here("cibersort_results/CIBERSORTx_beatAML_online.txt")) %>%
+beat_aml_ciber <- read_tsv(here("outs/cibersort_results/CIBERSORTx_beatAML_Results.txt")) %>%
   left_join(beat_aml_clinical2, by = c("Mixture" = "SAMPLE_ID")) %>%
   filter(FLT3_ITD_CONSENSUS_CALL == "Positive") %>%
   mutate(score = UseLASSOModelCoefs(cur_data(), coef(lasso_model)),
@@ -239,7 +301,7 @@ beat_surv <- DoSurvialAnalysis(beat_aml_ciber,
                                status,
                                score,
                                group_by = score_bin,
-                               description = "BeatAML (67% features present)",
+                               description = "BeatAML (80% features present)",
                                lasso = lasso_model)
 
 # print plots
@@ -255,7 +317,7 @@ graphics.off()
 
 ## LASSO Model with ONLY CIBERSORTx features ----
 
-target_ciber_no_filter <- read_tsv(here("cibersort_results/CIBERSORTx_target_online_Results.txt")) %>%
+target_ciber_no_filter <- read_tsv(here("outs/cibersort_results/CIBERSORTx_target_Results.txt")) %>%
   separate(col = "Mixture", into = c(NA, NA, "patient_id")) %>%
   inner_join(clinical)
 
@@ -273,8 +335,10 @@ target_ciber_no_filter %>%
   nest() %>%
   mutate(survival = map(data, ~ survdiff(Surv(`Event Free Survival Time in Days`, status) ~ value, data = .x))) %>%
   mutate(chi_sq = map_dbl(survival, ~ .x[["chisq"]]),
-         p_val = map_dbl(survival, CalculatePValues)) %>%
-  arrange(p_val)
+         p_val = map_dbl(survival, CalculatePValues.chi)) %>%
+  arrange(p_val) %>%
+  select(name, chi_sq, p_val) %>%
+  write_csv(file = here("outs/target_single_cluster_survival_CIBERSORTx_only.csv"))
 
 ### Train on TARGET (train) ----
 
@@ -289,7 +353,11 @@ lasso_model_nf <- DoLassoModel(target_ciber_nf_split$train,
                                         where(is_character),
                                         `P-value`:RMSE))
 
-coef(lasso_model_nf)
+coef(lasso_model_nf) %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "predictor") %>%
+  rename(coef = s0) %>%
+  write_csv(here("outs/TARGET_CIBERSORTx_LASSO_model_only_CIBERSORTx.csv"))
 
 target_ciber_nf_split$train <- target_ciber_nf_split$train %>%
   as_tibble() %>%
@@ -341,8 +409,8 @@ target_test_os_nf <- DoSurvialAnalysis(target_ciber_nf_split$test,
 
 ### Test on TCGA ----
 
-tcga_ciber <- read_tsv(here("cibersort_results/CIBERSORTx_tcga_Results.txt"))
-tcga_ann <- read_tsv(here("tcga/clinical.cart.2021-04-22/clinical.tsv"), na = "'--")
+tcga_ciber <- read_tsv(here("outs/cibersort_results/CIBERSORTx_tcga_Results.txt"))
+tcga_ann <- read_tsv(here("data/tcga/clinical.cart.2021-04-22/clinical.tsv"), na = "'--")
 
 tcga_ciber <- tcga_ciber %>%
   left_join(tcga_ann2, by = c("Mixture" = "case_submitter_id")) %>%
@@ -350,7 +418,7 @@ tcga_ciber <- tcga_ciber %>%
   mutate(score = UseLASSOModelCoefs(cur_data(), coef(lasso_model_nf)),
          score_bin = if_else(score >= median(score), "High", "Low"),
          status = if_else(vital_status == "Dead", 1, 0),
-         days_to_death = as.numeric(days_to_death.x))
+         days_to_death = as.numeric(days_to_death))
 
 tcga_surv_nf <- DoSurvialAnalysis(tcga_ciber,
                                days_to_death,
@@ -361,7 +429,7 @@ tcga_surv_nf <- DoSurvialAnalysis(tcga_ciber,
                                lasso = lasso_model_nf)
 
 ### Test on BeatAML ----
-beat_aml_ciber_nf <- read_tsv(here("cibersort_results/CIBERSORTx_beatAML_online.txt")) %>%
+beat_aml_ciber_nf <- read_tsv(here("outs/cibersort_results/CIBERSORTx_beatAML_Results.txt")) %>%
   left_join(beat_aml_clinical2, by = c("Mixture" = "SAMPLE_ID")) %>%
   filter(FLT3_ITD_CONSENSUS_CALL == "Positive") %>%
   mutate(score = UseLASSOModelCoefs(cur_data(), coef(lasso_model_nf)),
@@ -390,7 +458,7 @@ graphics.off()
 
 ### Train on TCGA ----
 
-tcga_ciber <- read_tsv(here("cibersort_results/CIBERSORTx_tcga_Results.txt"))
+tcga_ciber <- read_tsv(here("outs/cibersort_results/CIBERSORTx_tcga_Results.txt"))
 tcga_ciber <- left_join(tcga_ciber, tcga_ann2, by = c("Mixture" = "case_submitter_id"))
 
 lasso_model_nf <- DoLassoModel(tcga_ciber,
@@ -422,8 +490,8 @@ tcga_surv_nf <- DoSurvialAnalysis(tcga_res,
                                   lasso = lasso_model_nf)
 
 #$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$#
-### LASSO MODEL NOT SIGNIFICANT ###
-###       ENDING ANALYSIS       ###
+###   LASSO MODEL SIGNIFICANT   ###
+###       FINISH ANALYSIS       ###
 #$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$#
 
 ## LASSO Model using Features ----
@@ -510,7 +578,7 @@ target_test_surv_os <- DoSurvialAnalysis(target_test_score,
 tcga_data <- read_tsv(here("cibersort_in/tcga_cibersort.txt"))
 tcga_data <- transposeDF(tcga_data, rowname_col = "case_submitter_id")
 
-annotated_tcga <- read_tsv(here("tcga/clinical.cart.2021-04-22/clinical.tsv"), na = "'--") %>%
+annotated_tcga <- read_tsv(here("data/tcga/clinical.cart.2021-04-22/clinical.tsv"), na = "'--") %>%
   right_join(tcga_data) %>%
   mutate(score = UseLASSOModelCoefs(cur_data(), coef(target_model)),
          score_bin = if_else(score >= median(score), "High", "Low"),
@@ -526,7 +594,7 @@ tcga_surv <- DoSurvialAnalysis(annotated_tcga,
 
 ### Test with BeatAML on TARGET model ----
 
-beat_aml <- read_tsv(here("aml_ohsu_2018/data_RNA_Seq_expression_cpm.txt"))
+beat_aml <- read_tsv(here("data/aml_ohsu_2018/data_RNA_Seq_expression_cpm.txt"))
 
 beat_aml_data <- beat_aml %>%
   dplyr::select(-Entrez_Gene_Id) %>%
