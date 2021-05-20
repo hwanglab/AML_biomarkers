@@ -110,6 +110,12 @@
       "Source": "Bioconductor",
       "Hash": "1a9c016231c53483de05bec235ff8bfd"
     },
+    "DropletUtils": {
+      "Package": "DropletUtils",
+      "Version": "1.10.3",
+      "Source": "Bioconductor",
+      "Hash": "f3e78fee6ebbdbfdf679cfeaa0ec0083"
+    },
     "EnhancedVolcano": {
       "Package": "EnhancedVolcano",
       "Version": "1.8.0",
@@ -219,6 +225,27 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "366a8838782928e398b8762c932a42a3"
+    },
+    "R.methodsS3": {
+      "Package": "R.methodsS3",
+      "Version": "1.8.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "4bf6453323755202d5909697b6f7c109"
+    },
+    "R.oo": {
+      "Package": "R.oo",
+      "Version": "1.24.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "5709328352717e2f0a9c012be8a97554"
+    },
+    "R.utils": {
+      "Package": "R.utils",
+      "Version": "2.10.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "a9e316277ff12a43997266f2f6567780"
     },
     "R6": {
       "Package": "R6",
@@ -774,6 +801,12 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "9a374a10e3c0dbf1a0e207af019bfcea"
+    },
+    "edgeR": {
+      "Package": "edgeR",
+      "Version": "3.32.1",
+      "Source": "Bioconductor",
+      "Hash": "9728a55a7f19cfab9c54d84b4e59f143"
     },
     "ellipsis": {
       "Package": "ellipsis",
@@ -1336,6 +1369,13 @@
       "Repository": "CRAN",
       "Hash": "b0edacc02f7a3dad41a1afc385e929f4"
     },
+    "locfit": {
+      "Package": "locfit",
+      "Version": "1.5-9.4",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "760b5b542e8435237d1b3c253bfe18e7"
+    },
     "lubridate": {
       "Package": "lubridate",
       "Version": "1.7.10",
@@ -1551,13 +1591,6 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "4332529a23c4995d743ef489be54a839"
-    },
-    "phateR": {
-      "Package": "phateR",
-      "Version": "1.0.7",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "4a2fd4e319204bb045ace8afd4befb57"
     },
     "pheatmap": {
       "Package": "pheatmap",
@@ -1852,16 +1885,16 @@
     },
     "rsinglecell": {
       "Package": "rsinglecell",
-      "Version": "0.0.0.2",
+      "Version": "0.0.0.4",
       "Source": "GitHub",
-      "Remotes": "cole-trapnell-lab/monocle3, cole-trapnell-lab/leidenbase",
       "RemoteType": "github",
       "RemoteHost": "api.github.com",
-      "RemoteRepo": "rsinglecell",
       "RemoteUsername": "rschauner",
-      "RemoteRef": "HEAD",
-      "RemoteSha": "c83a2b747922a29f84b459a2595a491683561f1e",
-      "Hash": "7c750a62a08751e416836ba2c00c9959"
+      "RemoteRepo": "rsinglecell",
+      "RemoteRef": "master",
+      "RemoteSha": "88a75a916e7bff056801924ac0706ac8dd724202",
+      "Remotes": "cole-trapnell-lab/monocle3, cole-trapnell-lab/leidenbase",
+      "Hash": "7567d27bfa816c89ee0a0bb6cabda7b0"
     },
     "rstatix": {
       "Package": "rstatix",
