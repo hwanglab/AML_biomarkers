@@ -14,6 +14,8 @@ library(furrr)
 library(EnhancedVolcano)
 library(tidyverse)
 
+source(here("functions.R"))
+
 val <- read_excel(here("clinical_info/TARGET_AML_ClinicalData_Validation_20181213.xlsx"))
 dis <- read_excel(here("clinical_info/TARGET_AML_ClinicalData_Discovery_20181213.xlsx"))
 seq <- read_excel(file.path("../preprocessing/sample_info/Global Demultiplexing and Annotation.xlsx"))
@@ -24,6 +26,7 @@ clinical <- bind_rows(val, dis) %>%
 
 sig_level <- 0.10
 rerun_cibersort <- FALSE
+rerun_cellphone <- FALSE
 
 ## Subset + Dimension Reductions ----
 diagnosis <- cache_rds(expr = {
@@ -67,16 +70,6 @@ summarise(freq,
           med = median(freq),
           q1 = quantile(freq)[2],
           q3 = quantile(freq)[4])
-
-ReturnDifferences <- . %>%
-  #mutate(freq = scale(freq, center = FALSE)) %>%
-  group_by(status) %>%
-  summarise(freq_mean = mean(freq)) %>%
-  ungroup() %>%
-  summarise(value = max(freq_mean) - min(freq_mean),
-            value2 = status[which.max(freq_mean)]) %>%
-  mutate(value3 = if_else(value2 == 1, value, -1 * value)) %>%
-           pull(value3)
 
 survival_models <- freq %>%
   right_join(clinical) %>%
@@ -147,6 +140,53 @@ top_tables %>%
   list("All Gene Sets" = .) %>%
   append(top_tables) %>%
   openxlsx::write.xlsx(file = here("outs/GSVA_DE_results.xlsx"))
+
+## Run CellPhoneDB ----
+
+if (rerun_cellphone) {
+  seurat_tmp <- LoadH5Seurat(file.path(Sys.getenv("AML_DATA"), "05_seurat_annotated.h5Seurat"),
+                         assays = c("RNA"))
+  DefaultAssay(seurat_tmp) <- "RNA"
+  tmp <- subset(seurat_tmp, timepoint == "Diagnosis" & stemness == "Nonstem")
+  tmp <- NormalizeData(tmp)
+  
+  Idents(diagnosis) %>%
+    as_tibble(rownames = "Cell") %>%
+    rename(cell_type = value) %>%
+    write_tsv(here("data/cellphonedb_in/metadata.tsv"))
+  
+  GetAssayData(tmp, "data") %>%
+    DropletUtils::write10xCounts(path = here("data/cellphonedb_in/data"))
+  
+  file.rename(here("data/cellphonedb_in/data/genes.tsv"),
+              here("data/cellphonedb_in/data/features.tsv"))
+  
+  rm(tmp, seurat_tmp)
+  
+  system(here("cellphonedb.sh"))
+}
+
+## DE on Clusters ----
+sig_clusters <- survival_models %>%
+  filter(chi_sig == "chi_sig") %>%
+  pull(cluster)
+
+de_results <- map(sig_clusters, ~ FindMarkers(diagnosis,
+                                              ident.1 = .x,
+                                              test.use = "MAST"))
+names(de_results) <- sig_clusters
+
+de_name <- paste0(sig_clusters, collapse = "+")
+de_results[[de_name]] <- FindMarkers(diagnosis,
+                                     ident.1 = sig_clusters,
+                                     test.use = "MAST")
+
+de_results[["All Markers"]] <- FindAllMarkers(diagnosis, test.use = "MAST")
+openxlsx::write.xlsx(de_results, 
+                     file = here("outs/cluster_DE_results.xlsx"), 
+                     rowNames = TRUE)
+
+EnhancedVolcano(de_results$`20`, x = "avg_log2FC", y = "adj_p_val")
 
 ## Run CIBERSORTx ----
 if (rerun_cibersort) {
