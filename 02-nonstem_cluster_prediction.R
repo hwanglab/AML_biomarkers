@@ -201,6 +201,8 @@ if (rerun_cibersort) {
   system(here("CIBERSORTx.sh"))
 }
 
+# include non-flt3 pats
+
 ## LASSO Model with CIBERSORT ----
 sig_clusters <- survival_models %>%
   filter(chi_sig == "chi_sig") %>%
@@ -299,6 +301,34 @@ target_test_os <- DoSurvialAnalysis(target_ciber_split$test,
                                     description = "TARGET Training",
                                     lasso = lasso_model)
 
+### Test on TARGET (FLT3-ITD Negative) ----
+target_ciber_flt_neg <- target_ciber %>%
+  mutate(across(where(is_character), str_to_lower)) %>%
+  filter(`FLT3/ITD positive?` == "no")
+
+target_ciber_flt3_neg <- target_ciber_flt_neg %>%
+  mutate(status = if_else(`First Event` == "relapse", 1, 0),
+         `First Event` = NULL) %>%
+  mutate(score = UseLASSOModelCoefs(cur_data(), coef(lasso_model)),
+         score_bin = if_else(score >= median(score), "High", "Low"))
+
+target_flt3 <- DoSurvialAnalysis(target_ciber_flt3_neg,
+                                 `Event Free Survival Time in Days`,
+                                 status,
+                                 score,
+                                 group_by = score_bin,
+                                 description = "TARGET Test",
+                                 lasso = lasso_model)
+
+target_flt3_os <- DoSurvialAnalysis(target_ciber_flt3_neg,
+                                    `Overall Survival Time in Days`,
+                                    status,
+                                    score,
+                                    group_by = score_bin,
+                                    description = "TARGET Training",
+                                    lasso = lasso_model)
+
+
 ### Test on TCGA ----
 
 tcga_ciber <- read_tsv(here("outs/cibersort_results/CIBERSORTx_tcga_Results.txt"))
@@ -344,13 +374,15 @@ beat_surv <- DoSurvialAnalysis(beat_aml_ciber,
                                description = "BeatAML (80% features present)",
                                lasso = lasso_model)
 
-# print plots
+### Print Plots ----
 
 pdf(file = here("plots/CIBERSORT_survival.pdf"))
 target_train$plot
 target_test$plot
 target_train_os$plot
 target_test_os$plot
+target_flt3$plot
+target_flt3_os$plot
 tcga_surv$plot
 beat_surv$plot
 graphics.off()
@@ -484,7 +516,7 @@ beat_surv_nf <- DoSurvialAnalysis(beat_aml_ciber_nf,
                                description = "BeatAML (67% features present)",
                                lasso = lasso_model)
 
-# print plots
+### Print Plots ----
 pdf(file = here("plots/CIBERSORT_survival_no_filtering.pdf"))
 target_train_nf$plot
 target_test_nf$plot
@@ -655,6 +687,7 @@ beataml_surv <- DoSurvialAnalysis(beat_aml_data,
                   description = "Beat-AML Data (85.7% features present)",
                   lasso = target_model)
 
+### Print Plots ----
 pdf(here("plots/features_EFS_survival.pdf"))
 target_train_surv$plot
 target_train_surv_os$plot
