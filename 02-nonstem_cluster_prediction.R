@@ -159,7 +159,7 @@ if (rerun_cellphone) {
   
   rm(tmp, seurat_tmp)
   
-  system(here("cellphonedb.sh"))
+  system(here("lib/cellphonedb.sh"))
 }
 
 ## DE on Clusters ----
