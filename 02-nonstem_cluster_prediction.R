@@ -31,16 +31,11 @@ rerun_cellphone <- FALSE
 ## Subset + Dimension Reductions ----
 diagnosis <- cache_rds(expr = {
   seurat <- LoadH5Seurat(file.path(Sys.getenv("AML_DATA"), "05_seurat_annotated.h5Seurat"),
-                        assays = c("ADT", "SCT"))
+                        assays = c("SCT", "RNA"))
   
   DefaultAssay(seurat) <- "SCT"
 
   meta <- seurat[["patient_id"]] %>% rownames_to_column()
-
-  clinical <- bind_rows(val, dis) %>%
-    distinct() %>%
-    separate(`TARGET USI`, into = c(NA, NA, "patient_id"), sep = "-")
-
   data <- filter(clinical, patient_id %in% pull(seq, patient_id))
 
   seurat@misc[["patient_data"]] <- data
@@ -52,7 +47,8 @@ diagnosis <- cache_rds(expr = {
   diagnosis[["clusters"]] <- Idents(diagnosis)
   diagnosis
   },
-  file = "02-seurat_diagnosis_nonstem.rds")
+  file = "02-seurat_diagnosis_nonstem.rds",
+  hash = list(file.info(file.path(Sys.getenv("AML_DATA"), "05_seurat_annotated.h5Seurat"))))
 
 ## Find DE Clusters ----
 wilcox_clusters <- FindClusterFreq(diagnosis[[]], c("patient_id", "prognosis"), "clusters") %>%
