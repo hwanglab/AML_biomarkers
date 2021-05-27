@@ -190,14 +190,16 @@ if (rerun_cibersort) {
 
   cibersort_data <- GetAssayData(seurat_down, slot = "data")
   cibersort_data <- as.data.frame(cibersort_data)
-  cibersort_data2 <- rbind(paste0("cluster", Idents(seurat_down)), cibersort_data)
+  cibersort_clusters <- as.data.frame(t(paste0("cluster", Idents(seurat_down))))
+  colnames(cibersort_clusters) <- colnames(cibersort_data)
+  rownames(cibersort_clusters) <- "GeneSymbol"
+  
+  cibersort_data2 <- rbind(cibersort_clusters, cibersort_data)
 
   write.table(cibersort_data2, file = here("cibersort_in/nonstem_clusters.txt"), quote = FALSE, sep = "\t")
 
   system(here("CIBERSORTx.sh"))
 }
-
-# include non-flt3 pats
 
 ## LASSO Model with CIBERSORT ----
 sig_clusters <- survival_models %>%
