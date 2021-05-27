@@ -296,26 +296,26 @@ target_test_os <- DoSurvialAnalysis(target_ciber_split$test,
                                     status,
                                     score,
                                     group_by = score_bin,
-                                    description = "TARGET Training",
+                                    description = "TARGET Test",
                                     lasso = lasso_model)
 
 ### Test on TARGET (FLT3-ITD Negative) ----
-target_ciber_flt_neg <- target_ciber %>%
+target_ciber_flt3_neg <- target_ciber %>%
   mutate(across(where(is_character), str_to_lower)) %>%
-  filter(`FLT3/ITD positive?` == "no")
+  filter(`FLT3/ITD positive?` == "no" & `CEBPA mutation` == "no")
 
 target_ciber_flt3_neg <- target_ciber_flt_neg %>%
   mutate(status = if_else(`First Event` == "relapse", 1, 0),
          `First Event` = NULL) %>%
   mutate(score = UseLASSOModelCoefs(cur_data(), coef(lasso_model)),
-         score_bin = if_else(score >= median(score), "High", "Low"))
+         score_bin = if_else(score >= median(score, na.rm = TRUE), "High", "Low"))
 
 target_flt3 <- DoSurvialAnalysis(target_ciber_flt3_neg,
                                  `Event Free Survival Time in Days`,
                                  status,
                                  score,
                                  group_by = score_bin,
-                                 description = "TARGET Test",
+                                 description = "TARGET FLT3-",
                                  lasso = lasso_model)
 
 target_flt3_os <- DoSurvialAnalysis(target_ciber_flt3_neg,
@@ -323,9 +323,35 @@ target_flt3_os <- DoSurvialAnalysis(target_ciber_flt3_neg,
                                     status,
                                     score,
                                     group_by = score_bin,
-                                    description = "TARGET Training",
+                                    description = "TARGET FLT3-",
                                     lasso = lasso_model)
 
+### Test on TARGET (CEBPA+) ----
+target_ciber_cebpa <- target_ciber %>%
+  mutate(across(where(is_character), str_to_lower)) %>%
+  filter(`CEBPA mutation` == "yes")
+
+target_ciber_cebpa <- target_ciber_cebpa %>%
+  mutate(status = if_else(`First Event` == "relapse", 1, 0),
+         `First Event` = NULL) %>%
+  mutate(score = UseLASSOModelCoefs(cur_data(), coef(lasso_model)),
+         score_bin = if_else(score >= median(score, na.rm = TRUE), "High", "Low"))
+
+target_cebpa <- DoSurvialAnalysis(target_ciber_cebpa,
+                                 `Event Free Survival Time in Days`,
+                                 status,
+                                 score,
+                                 group_by = score_bin,
+                                 description = "TARGET CEBPA+",
+                                 lasso = lasso_model)
+
+target_cebpa_os <- DoSurvialAnalysis(target_ciber_cebpa,
+                                    `Overall Survival Time in Days`,
+                                    status,
+                                    score,
+                                    group_by = score_bin,
+                                    description = "TARGET CEBPA+",
+                                    lasso = lasso_model)
 
 ### Test on TCGA ----
 
@@ -345,7 +371,7 @@ tcga_surv <- DoSurvialAnalysis(tcga_ciber,
                                  status,
                                  score,
                                  group_by = score_bin,
-                                 description = "TCGA (50% features present)",
+                                 description = "TCGA (60% features present)",
                                  lasso = lasso_model)
 
 ### Test on BeatAML ----
@@ -381,6 +407,8 @@ target_train_os$plot
 target_test_os$plot
 target_flt3$plot
 target_flt3_os$plot
+target_cebpa$plot
+target_cebpa_os$plot
 tcga_surv$plot
 beat_surv$plot
 graphics.off()
@@ -477,6 +505,60 @@ target_test_os_nf <- DoSurvialAnalysis(target_ciber_nf_split$test,
                                     description = "TARGET Training",
                                     lasso = lasso_model_nf)
 
+### Test on TARGET (FLT3-ITD Negative) ----
+target_ciber_flt3_neg <- target_ciber %>%
+  mutate(across(where(is_character), str_to_lower)) %>%
+  filter(`FLT3/ITD positive?` == "no" & `CEBPA mutation` == "no")
+
+target_ciber_flt3_neg_nf <- target_ciber_flt3_neg %>%
+  mutate(status = if_else(`First Event` == "relapse", 1, 0),
+         `First Event` = NULL) %>%
+  mutate(score = UseLASSOModelCoefs(cur_data(), coef(lasso_model)),
+         score_bin = if_else(score >= median(score, na.rm = TRUE), "High", "Low"))
+
+target_flt3_nf <- DoSurvialAnalysis(target_ciber_flt3_neg_nf,
+                                 `Event Free Survival Time in Days`,
+                                 status,
+                                 score,
+                                 group_by = score_bin,
+                                 description = "TARGET FLT3-",
+                                 lasso = lasso_model)
+
+target_flt3_os_nf <- DoSurvialAnalysis(target_ciber_flt3_neg_nf,
+                                    `Overall Survival Time in Days`,
+                                    status,
+                                    score,
+                                    group_by = score_bin,
+                                    description = "TARGET FLT3-",
+                                    lasso = lasso_model)
+
+### Test on TARGET (CEBPA+) ----
+target_ciber_cebpa <- target_ciber %>%
+  mutate(across(where(is_character), str_to_lower)) %>%
+  filter(`CEBPA mutation` == "yes")
+
+target_ciber_cebpa <- target_ciber_cebpa %>%
+  mutate(status = if_else(`First Event` == "relapse", 1, 0),
+         `First Event` = NULL) %>%
+  mutate(score = UseLASSOModelCoefs(cur_data(), coef(lasso_model)),
+         score_bin = if_else(score >= median(score, na.rm = TRUE), "High", "Low"))
+
+target_cebpa <- DoSurvialAnalysis(target_ciber_cebpa,
+                                  `Event Free Survival Time in Days`,
+                                  status,
+                                  score,
+                                  group_by = score_bin,
+                                  description = "TARGET CEBPA+",
+                                  lasso = lasso_model)
+
+target_cebpa_os <- DoSurvialAnalysis(target_ciber_cebpa,
+                                     `Overall Survival Time in Days`,
+                                     status,
+                                     score,
+                                     group_by = score_bin,
+                                     description = "TARGET CEBPA+",
+                                     lasso = lasso_model)
+
 ### Test on TCGA ----
 
 tcga_ciber <- read_tsv(here("outs/cibersort_results/CIBERSORTx_tcga_Results.txt"))
@@ -517,9 +599,13 @@ beat_surv_nf <- DoSurvialAnalysis(beat_aml_ciber_nf,
 ### Print Plots ----
 pdf(file = here("plots/CIBERSORT_survival_no_filtering.pdf"))
 target_train_nf$plot
-target_test_nf$plot
 target_train_os_nf$plot
+target_test_nf$plot
 target_test_os_nf$plot
+target_flt3_nf$plot
+target_flt3_os_nf$plot
+target_cebpa$plot
+target_cebpa_os$plot
 tcga_surv_nf$plot
 beat_surv_nf$plot
 graphics.off()
@@ -644,6 +730,60 @@ target_test_surv_os <- DoSurvialAnalysis(target_test_score,
                                       description = "TARGET Test Data",
                                       lasso = target_model)
 
+### Test on TARGET (FLT3-ITD Negative) ----
+target_ciber_flt3_neg <- target_ciber %>%
+  mutate(across(where(is_character), str_to_lower)) %>%
+  filter(`FLT3/ITD positive?` == "no" & `CEBPA mutation` == "no")
+
+target_ciber_flt3_neg_feats <- target_ciber_flt3_neg %>%
+  mutate(status = if_else(`First Event` == "relapse", 1, 0),
+         `First Event` = NULL) %>%
+  mutate(score = UseLASSOModelCoefs(cur_data(), coef(lasso_model)),
+         score_bin = if_else(score >= median(score, na.rm = TRUE), "High", "Low"))
+
+target_flt3_feats <- DoSurvialAnalysis(target_ciber_flt3_neg_feats,
+                                    `Event Free Survival Time in Days`,
+                                    status,
+                                    score,
+                                    group_by = score_bin,
+                                    description = "TARGET FLT3-",
+                                    lasso = lasso_model)
+
+target_flt3_os_feats <- DoSurvialAnalysis(target_ciber_flt3_neg_feats,
+                                       `Overall Survival Time in Days`,
+                                       status,
+                                       score,
+                                       group_by = score_bin,
+                                       description = "TARGET FLT3-",
+                                       lasso = lasso_model)
+
+### Test on TARGET (CEBPA+) ----
+target_ciber_cebpa <- target_ciber %>%
+  mutate(across(where(is_character), str_to_lower)) %>%
+  filter(`CEBPA mutation` == "yes")
+
+target_ciber_cebpa <- target_ciber_cebpa %>%
+  mutate(status = if_else(`First Event` == "relapse", 1, 0),
+         `First Event` = NULL) %>%
+  mutate(score = UseLASSOModelCoefs(cur_data(), coef(lasso_model)),
+         score_bin = if_else(score >= median(score, na.rm = TRUE), "High", "Low"))
+
+target_cebpa <- DoSurvialAnalysis(target_ciber_cebpa,
+                                  `Event Free Survival Time in Days`,
+                                  status,
+                                  score,
+                                  group_by = score_bin,
+                                  description = "TARGET CEBPA+",
+                                  lasso = lasso_model)
+
+target_cebpa_os <- DoSurvialAnalysis(target_ciber_cebpa,
+                                     `Overall Survival Time in Days`,
+                                     status,
+                                     score,
+                                     group_by = score_bin,
+                                     description = "TARGET CEBPA+",
+                                     lasso = lasso_model)
+
 ### Test with TCGA on TARGET model ----
 tcga_data <- read_tsv(here("cibersort_in/tcga_cibersort.txt"))
 tcga_data <- transposeDF(tcga_data, rowname_col = "case_submitter_id")
@@ -691,6 +831,8 @@ target_train_surv$plot
 target_train_surv_os$plot
 target_test_surv$plot
 target_test_surv_os$plot
+target_cebpa$plot
+target_cebpa_os$plot
 tcga_surv$plot
 beataml_surv$plot
 graphics.off()
