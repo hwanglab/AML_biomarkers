@@ -152,7 +152,8 @@ if (rerun_cellphone) {
     write_tsv(here("data/cellphonedb_in/metadata.tsv"))
   
   GetAssayData(tmp, "data") %>%
-    DropletUtils::write10xCounts(path = here("data/cellphonedb_in/data"))
+    DropletUtils::write10xCounts(path = here("data/cellphonedb_in/data"),
+                                 overwrite = TRUE)
   
   file.rename(here("data/cellphonedb_in/data/genes.tsv"),
               here("data/cellphonedb_in/data/features.tsv"))
