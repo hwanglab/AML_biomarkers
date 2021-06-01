@@ -184,41 +184,36 @@ cpdb <- ScoreJackStraw(cpdb, dims = 1:pc)
 
 JackStrawPlot(cpdb, dims = 1:(pc / 2)) + ElbowPlot(cpdb, ndims = (pc / 2)) & NoLegend()
 
-circleFun <- function(diameter = 1, npoints = 100){
-  r = diameter / 2
-  tt <- seq(0,2*pi,length.out = npoints)
-  xx <- r * cos(tt)
-  yy <- r * sin(tt)
-  return(data.frame(x = xx, y = yy))
-}
+good_pca_vars <- cpdb@reductions$pca@feature.loadings %>%
+  as.data.frame() %>%
+  abs() %>%
+  slice_max(PC_1, n = 50) %>%
+  rownames()
+pca_vars <- cpdb@reductions$pca@feature.loadings %>%
+  as.data.frame() %>%
+  .[which(rownames(.) %in% good_pca_vars), ]
 
-circ <- circleFun(diameter = 0.2, npoints = 500)
+iplot <- plotly::plot_ly(data = pca_vars,
+                x = ~ PC_1,
+                y = ~ PC_2,
+                text = rownames(pca_vars)) %>%
+  add_segments(x = 0, y = 0, xend = ~ PC_1, yend = ~ PC_2) %>%
+  add_segments(x = 0, xend = 0, y = -0.1, yend = 0.1, color = I("grey"), line = list(dash = "dash")) %>%
+  add_segments(y = 0, yend = 0, x = -0.1, xend = 0.1, color = I("grey"), line = list(dash = "dash")) %>%
+  layout(shapes = list(type = "circle",
+                       xref = "x", x0 = -0.1, x1 = 0.1,
+                       yref = "y", y0 = -0.1, y1 = 0.1,
+                       color = I("grey"),
+                       line = list(dash = "dash")),
+         yaxis = list(scaleanchor = "x", zeroline = FALSE, showgrid = FALSE),
+         xaxis = list(zeroline = FALSE, showgrid = FALSE),
+         showlegend = FALSE,
+         title = "CellPhoneDB Feature Loading Plot") %>%
+  add_text(textposition = "top right")
 
-pca_vars <- cpdb@reductions$pca@feature.loadings %>% as.data.frame()
-good_pca_vars <- pca_vars %>% abs() %>% slice_max(PC_1, n = 20) %>% rownames()
-pca_vars <- pca_vars[which(rownames(pca_vars) %in% good_pca_vars), ]
+iplot
 
-loading_plot <- ggplot() +
-  geom_path(data = circ, aes(x,y), lty = 2, color = "grey", alpha = 0.7) +
-  geom_hline(yintercept = 0, lty = 2, color = "grey", alpha = 0.9) +
-  geom_vline(xintercept = 0, lty = 2, color = "grey", alpha = 0.9) +
-  geom_segment(data = pca_vars, aes(x = 0, xend = PC_1, y = 0, yend = PC_2),
-               arrow = arrow(length = unit(0.025, "npc"), type = "open"), 
-               lwd = 1) + 
-  geom_text(data = pca_vars, 
-            aes(x = PC_1 * 1.15,
-                y =  PC_2 * 1.15,
-                label = rownames(pca_vars)),
-            check_overlap = TRUE,
-            size = 3) +
-  xlab("PC 1") + 
-  ylab("PC 2") +
-  coord_equal() +
-  theme_minimal() +
-  theme(panel.grid = element_blank(), 
-        panel.border = element_rect(fill = "transparent"))
-
-plotly::ggplotly(loading_plot)
+htmlwidgets::saveWidget(as_widget(iplot), here("plots/cellphone_feature_loading.html"))
 
 ## DE on Clusters ----
 sig_clusters <- survival_models %>%
