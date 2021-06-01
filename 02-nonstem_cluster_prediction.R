@@ -162,6 +162,63 @@ if (rerun_cellphone) {
   
   system(here("lib/cellphonedb.sh"))
 }
+pdf(file = here("plots/cellphone_plot.pdf"), height = 12, width = 18)
+CellPhoneDotPlot(output_path = here("outs/cellphonedb_results"))
+graphics.off()
+
+cpdb_data <- ReadCellPhone(output_path = here("outs/cellphonedb_results"))
+
+cpdb <- cpdb_data %>%
+  pivot_wider(names_from = clusters, values_from = mean) %>%
+  select(-pvalue) %>%
+  remove_missing(., vars = names(.)[2:length(.)]) %>%
+  column_to_rownames(var = "pair") %>%
+  CreateSeuratObject()
+
+cpdb <- ScaleData(cpdb)
+
+pc <- 100
+cpdb <- RunPCA(cpdb, features = rownames(cpdb), npcs = pc)
+cpdb <- JackStraw(cpdb, dims = pc)
+cpdb <- ScoreJackStraw(cpdb, dims = 1:pc)
+
+JackStrawPlot(cpdb, dims = 1:(pc / 2)) + ElbowPlot(cpdb, ndims = (pc / 2)) & NoLegend()
+
+circleFun <- function(diameter = 1, npoints = 100){
+  r = diameter / 2
+  tt <- seq(0,2*pi,length.out = npoints)
+  xx <- r * cos(tt)
+  yy <- r * sin(tt)
+  return(data.frame(x = xx, y = yy))
+}
+
+circ <- circleFun(diameter = 0.2, npoints = 500)
+
+pca_vars <- cpdb@reductions$pca@feature.loadings %>% as.data.frame()
+good_pca_vars <- pca_vars %>% abs() %>% slice_max(PC_1, n = 20) %>% rownames()
+pca_vars <- pca_vars[which(rownames(pca_vars) %in% good_pca_vars), ]
+
+loading_plot <- ggplot() +
+  geom_path(data = circ, aes(x,y), lty = 2, color = "grey", alpha = 0.7) +
+  geom_hline(yintercept = 0, lty = 2, color = "grey", alpha = 0.9) +
+  geom_vline(xintercept = 0, lty = 2, color = "grey", alpha = 0.9) +
+  geom_segment(data = pca_vars, aes(x = 0, xend = PC_1, y = 0, yend = PC_2),
+               arrow = arrow(length = unit(0.025, "npc"), type = "open"), 
+               lwd = 1) + 
+  geom_text(data = pca_vars, 
+            aes(x = PC_1 * 1.15,
+                y =  PC_2 * 1.15,
+                label = rownames(pca_vars)),
+            check_overlap = TRUE,
+            size = 3) +
+  xlab("PC 1") + 
+  ylab("PC 2") +
+  coord_equal() +
+  theme_minimal() +
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(fill = "transparent"))
+
+plotly::ggplotly(loading_plot)
 
 ## DE on Clusters ----
 sig_clusters <- survival_models %>%
