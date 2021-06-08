@@ -4,6 +4,7 @@ library(here)
 library(rsinglecell)
 library(readxl)
 library(biomaRt)
+library(granulator)
 library(survival)
 library(survminer)
 library(scorecard)
@@ -237,22 +238,70 @@ openxlsx::write.xlsx(de_results,
 
 EnhancedVolcano(de_results$`20`, x = "avg_log2FC", y = "adj_p_val")
 
-## Run CIBERSORTx ----
-if (rerun_cibersort) {
-  seurat_down <- subset(diagnosis, downsample = 100)
+## Run Granulator ----
+target_data <- read_tsv(here("cibersort_in/target_data.txt")) %>%
+  column_to_rownames(var = "GeneSymbol") %>%
+  as.matrix()
 
-  cibersort_data <- GetAssayData(seurat_down, slot = "data")
-  cibersort_data <- as.data.frame(cibersort_data)
-  cibersort_clusters <- as.data.frame(t(paste0("cluster", Idents(seurat_down))))
-  colnames(cibersort_clusters) <- colnames(cibersort_data)
-  rownames(cibersort_clusters) <- "GeneSymbol"
+tcga_data <- read_tsv(here("cibersort_in/target_data.txt")) %>%
+  column_to_rownames(var = "GeneSymbol") %>%
+  as.matrix()
+
+beatAML_data <- read_tsv(here("cibersort_in/beat_aml.txt")) %>%
+  column_to_rownames(var = "GeneSymbol") %>%
+  as.matrix()
+
+### Make References ----
+refs <- cache_rds({
+  ref <- FindAllMarkers(diagnosis, max.cells.per.ident = 100)
+  ref2 <- ref[ref$p_val_adj <= 0.05 & abs(ref$avg_log2FC) >= 0.25, "gene"]
+  ref3 <- AverageExpression(diagnosis,
+                            assays = "SCT",
+                            features = ref2,
+                            group.by = "clusters")$SCT
   
-  cibersort_data2 <- rbind(cibersort_clusters, cibersort_data)
+  colnames(ref3) <- colnames(ref3) %>% paste0("cluster", .)
+  
+  ciber_gep <- read_tsv(here("cibersort_in/nonstem_clusters_GEP.txt")) %>%
+    column_to_rownames(var = "genesymbols") %>%
+    as.matrix()
+  
+  list(CIBERSORTx = ciber_gep, custom = ref3)
+}, file = "02-decon_refs.rds",
+hash = list(diagnosis[["clusters"]]))
 
-  write.table(cibersort_data2, file = here("cibersort_in/nonstem_clusters.txt"), quote = FALSE, sep = "\t")
+sim_plot <- plot_similarity(refs)
 
-  system(here("CIBERSORTx.sh"))
-}
+### Deconvolute ----
+cores <- 12
+decon_target <- cache_rds(
+  deconvolute(target_data, sigMatrix = refs, use_cores = cores),
+  hash = list(target_data, refs),
+  file = "02-TARGET_decon.rds"
+  )
+decon_beatAML <- cache_rds(
+  deconvolute(beatAML_data, sigMatrix = refs, use_cores = cores), 
+  hash = list(beatAML_data, refs), 
+  file = "02-beatAML_decon.rds"
+  )
+decon_tcga <- cache_rds(
+  deconvolute(tcga_data, sigMatrix = refs, use_cores = cores), 
+  hash = list(tcga_data, refs), 
+  file = "02-TCGA_decon.rds"
+  )
+
+deconvoluted_samples <- list(TARGET = decon_target,
+                             beatAML = decon_beatAML,
+                             TCGA = decon_tcga)
+### Make + Print Plots ----
+decon_plots <- map(deconvoluted_samples, plot_deconvolute, scale = TRUE, labels = FALSE, markers = FALSE)
+cor_plots <- map(deconvoluted_samples, plot_correlate, method = "heatmap", legend = TRUE)
+
+pdf(file = here("plots/decon_plots.pdf"), width = 12, height = 18) 
+sim_plot
+decon_plots
+cor_plots
+graphics.off()
 
 ## LASSO Model with CIBERSORT ----
 sig_clusters <- survival_models %>%
