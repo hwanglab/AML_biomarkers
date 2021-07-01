@@ -1,0 +1,22 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "R: Style",
+			"command": "Rscript",
+			"args": [
+				".vscode/styler.r",
+				"--i=${file}"
+			],
+			"problemMatcher": [],
+			"presentation": {
+				"echo": true,
+				"reveal": "never",
+				"focus": false,
+				"panel":"dedicated",
+				"showReuseMessage": false,
+				"clear": false
+			}
+		}
+	]
+}
