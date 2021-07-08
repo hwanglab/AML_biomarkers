@@ -1,18 +1,16 @@
 #!/usr/local/bin/bash
 
-cd ~/Documents/Lab/clonal_evolution/biomarkers || exit
-
 conda activate cpdb
 
-INDIR=data/cellphonedb_in
-OUTDIR=outs/cellphonedb_results
-PLOTDIR=plots
+OUTDIR=$1
+PLOTDIR=$2
+CORES=$3
 
 cellphonedb method statistical_analysis \
-  $INDIR/metadata.tsv \
-  $INDIR/data \
+  $OUTDIR/cellphone_db_metadata.tsv \
+  $OUTDIR/cellphone_db_data \
   --output-path=$OUTDIR \
-  --threads=12 \
+  --threads=$CORES \
   --counts-data=gene_name \
   --subsampling \
   --subsampling-log false

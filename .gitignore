@@ -4,15 +4,11 @@
 .Ruserdata
 *.Rds
 .RData
-target/
-tcga/
-aml_ohsu_2018/
 plots/
 cibersort_*
 SRA*
 Sra*
 clinical_info
-nationwide*
-ptn_info.txt
 data/
 outs/
+cache/
