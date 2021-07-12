@@ -118,7 +118,7 @@ refs <- cache_rds(
     }
 
     debug(logger, paste0("Loading CIBERSORTx GEP from:", gep_filename))
-    ciber_gep <- read_tsv(here(gep_filename)) %>%
+    ciber_gep <- read_tsv(here(gep_filename), col_types = cols()) %>%
       column_to_rownames(var = "GeneSymbol") %>%
       as.matrix()
 
