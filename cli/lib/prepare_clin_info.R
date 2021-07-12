@@ -7,10 +7,12 @@ source(here("lib/functions.R"))
 ### TARGET ----
 
 val <- read_excel(
-  here("clinical_info/TARGET_AML_ClinicalData_Validation_20181213.xlsx")
+  here("clinical_info/TARGET_AML_ClinicalData_Validation_20181213.xlsx"),
+  col_types = cols()
 )
 dis <- read_excel(
-  here("clinical_info/TARGET_AML_ClinicalData_Discovery_20181213.xlsx")
+  here("clinical_info/TARGET_AML_ClinicalData_Discovery_20181213.xlsx"),
+  col_types = cols()
 )
 cog <- read.xlsx(here("clinical_info/AAML19B3Q_data_transfer.xlsx"),
   sheetIndex = 2,
