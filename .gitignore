@@ -12,3 +12,4 @@ clinical_info
 data/
 outs/
 cache/
+cli/lib/git_setup.sh
