@@ -4,25 +4,43 @@
 
 ## Installation/Setup
 
+Note: You also need to have access to rsinglecell--a custom package. 
+
 ### Using Docker Image
 The simplest way to run this with Docker is using Visual Studio Code.
+Prior to building the container, edit the `docker-compose.yml` file with the following line depending on your host system (do not use realitive paths):
+```
+# Windows
+# %LOCALAPPDATA% is C:\Users\[Your Username]\AppData\Local
+%LOCALAPPDATA%/renv:/root/.local/share/renv:cached
+
+# MacOS
+/Users/[Your Username]/Library/Application Support/renv:/root/.local/share/renv:cached
+
+# Linux
+/usr/[Your Username]/.local/share/renv:/root/.local/share/renv:cached
+```
+This will **not** effect your local R packages--even if they are of a different R version, or system.
+If you do not use [renv](https://rstudio.github.io/renv), please create this folder.
+You can do so by using renv, or via some folder wizardry.
 When starting VSCode with the Remote Containers extension, build the image. 
 This will take some time as all the R packages will be installed.
 From there, you should have an interactive development enviorment and can run the pipeline. 
 Due to caching by renv, successive builds should be faster.
+And, if you build other containers like this, and use the same packages, they too will build faster.
 
 #### Running without Visual Studio Code
 Using VSCode makes running simpler, as directory binding is somewhat automatic. 
 If you decide against using VSCode, you first need to uncomment the following line in the Dockerfile: `RUN Rscript -e "source('renv/activate.R');renv::restore(prompt = FALSE)"`.
 Then, you have to take care to bind all the directories from your system into the container.
+To mount a volume to use for the renv cache use the [approparte cache location](https://rstudio.github.io/renv/reference/paths.html) and bind with the following structure: `"$RENV_ROOT_HOST":/root/.local/share/renv`. 
+Please note, the quotes are required if spaces are present in the path (Thanks Apple!). Then just use `docker compose up` to start the container.
 
 ### Getting Setup without Docker
 Renv is used for this project. 
 To install all the R packages just use `renv::restore()`. 
 (This is what happens during the docker container build.)
 The renv autoloader should automatically boostrap renv and `renv::restore()` will take care of installing all the correct package versions, although you will have to install system dependencies yourself.
-
-Note: You also need to have access to rsinglecell--a custom package. 
 
 ## Running the Pipeline
 
