@@ -1,0 +1,10 @@
+version: '3.4'
+
+services:
+  biomarkers:
+    image: biomarkers
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    volumes: 
+      - /Users/schaunr/Library/Application Support/renv:/root/.local/share/renv:cached

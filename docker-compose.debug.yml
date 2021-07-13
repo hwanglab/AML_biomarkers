@@ -1,0 +1,8 @@
+version: '3.4'
+
+services:
+  biomarkers:
+    image: biomarkers
+    build:
+      context: .
+      dockerfile: ./Dockerfile

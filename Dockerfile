@@ -37,7 +37,7 @@ ENV AML_DATA=/sc_data
 RUN mkdir -p /outs
 RUN mkdir -p /plots
 RUN mkdir -p /sc_data
+RUN mkdir -p ~/.local/share/renv
 
 RUN mkdir /data
 RUN mkdir /clinical_info
-RUN mkdir -p /.local/share/renv
