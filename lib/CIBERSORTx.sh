@@ -1,4 +1,4 @@
-#! /bin/bash
+#!/usr/bin/env bash
 
 cd ~/Documents/Lab/clonal_evolution/biomarkers || exit
 
