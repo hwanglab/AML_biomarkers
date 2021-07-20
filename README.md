@@ -7,18 +7,27 @@
 Note: You also need to have access to rsinglecell--a custom package. 
 
 ### Using Docker Image
-The simplest way to run this with Docker is using Visual Studio Code.
-Prior to building the container, edit the `docker-compose.yml` file with the following line depending on your host system (do not use realitive paths):
+The simplest way to run this with Docker is using Visual Studio Code--but most of these steps work without VSCode.
+
+Prior to building the container, you must do 2 things.
+Firstly, create a file called `.env` in the root directory and add your GitHub email (VAR:`EMAIL`), PAT (VAR:`GIT_TOKEN`), your name (VAR:`NAME`), and your GitHub username (VAR:`UNAME`).
+Your email should also be the same as used with CIBERSORTx.
+You should also add your CIBERSORTx token (VAR:`TOKEN`).
+This file will be automatically recognized at build time.
+Secondly, edit the `docker-compose.yml` file with the following line depending on your host system (do not use realitive paths):
 ```
 # Windows
 # %LOCALAPPDATA% is C:\Users\[Your Username]\AppData\Local
 %LOCALAPPDATA%/renv:/root/.local/share/renv:cached
 
-# MacOS
+# MacOS (notice the space in Application Support)
 /Users/[Your Username]/Library/Application Support/renv:/root/.local/share/renv:cached
 
 # Linux
 /usr/[Your Username]/.local/share/renv:/root/.local/share/renv:cached
+
+# If you have modified $RENV_CACHE_ROOT on any system
+$RENV_CACHE_ROOT:/root/.local/share/renv:cached
 ```
 This will **not** effect your local R packages--even if they are of a different R version, or system.
 If you do not use [renv](https://rstudio.github.io/renv), please create this folder.
