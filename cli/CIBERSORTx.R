@@ -190,8 +190,9 @@ if (argv$use_slurm) {
 
 files_list <- list("beat_aml_1_sam_test.txt")
 
-print(sys_cmd(files_list[[1]]))
-
 cibersort_results <- lapply_cus(X = files_list, FUN = function(x) {
   system(sys_cmd(x))
 })
+
+source(here("lib/WriteInvocation.R"))
+WriteInvocation(argv, output_path = here(output_path, "invocation"))
