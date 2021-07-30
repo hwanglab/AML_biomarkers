@@ -25,6 +25,9 @@ Secondly, edit the `docker-compose.yml` file with the following line depending o
 
 # Linux
 /usr/[Your Username]/.local/share/renv:/root/.local/share/renv:cached
+
+# If you have modified $RENV_CACHE_ROOT on any system
+$RENV_CACHE_ROOT:/root/.local/share/renv:cached
 ```
 This will **not** effect your local R packages--even if they are of a different R version, or system.
 If you do not use [renv](https://rstudio.github.io/renv), please create this folder.
