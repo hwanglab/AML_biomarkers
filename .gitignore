@@ -13,3 +13,6 @@ data/
 outs/
 cache/
 cli/lib/git_setup.sh
+.env
+slurm
+*.sif
