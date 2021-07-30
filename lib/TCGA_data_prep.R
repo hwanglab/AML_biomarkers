@@ -25,5 +25,5 @@ tcga_sam <- colnames(tcga_data) %>%
 colnames(tcga_data) <- c("ensembl_gene_id_version", tcga_sam)
 
 tcga_data <- EnsemblToHGNC(tcga_data, "ensembl_gene_id_version")
-write_tsv(tcga_data, file = here("tcga_cibersort.tsv"))
+write_tsv(tcga_data, file = here("cibersort_in/tcga_cibersort.tsv"))
 
