@@ -4,6 +4,7 @@ import subprocess
 import argparse
 import os
 import shutil
+import logging
 
 parser = argparse.ArgumentParser(description = "Deconvolute Samples")
 
@@ -16,12 +17,17 @@ parser.add_argument("--container-software", "-C", help="what container software 
 
 argv = parser.parse_args(["-r", "CIBERSORTx_cibersort_ref_input_inferred_refsample.txt", "-i", "flt3_cebpa"])
 
+logger = logging.getLogger("CIBERSORTx")
+logger.setLevel(vars(argv).get("verbose"))
+
 docker_singularity_cmd = vars(argv).get("container_software")
 
 if vars(argv).get("container_software") == "singularity":
     use_singularity = True
+    logger.info("Using Singularity")
 elif vars(argv).get("container_software") == "docker":
     use_singularity = False
+    logger.info("Using Docker")
 else:
     raise SyntaxError("Only Singularity and Docker are supported")
 
@@ -44,6 +50,7 @@ output_bind = output_path + name_of_output_directory + ":/src/outdir"
 user_email = os.getenv("EMAIL")
 user_token = os.getenv("TOKEN")
 
+logger.info("Preparing Run Commands")
 if use_singularity:
     container_cmd = ["singularity", "run", "--pwd", "/src", "-B", input_bind, "-B", output_bind, "docker://cibersortx/fractions"]
 else:
@@ -57,11 +64,12 @@ def run_cmd(mixture):
     specific_args = ["--sigmatrix", ref_filename, "--mixture", mixture]
     res = [container_cmd, cibersort_cmd, specific_args]
     flattened = [val for sublist in res for val in sublist]
-    return flattened
+    return flattened + " > /dev/null"
 
 data = ["tcga_data.txt", "target_data.txt", "beat_aml.txt"]
 
 for dat in data:
+    logger.info("Running CIBERSORTx on {}".format(dat))
     source_path = "{}/{}".format("cibersort_in", dat)
     destination_path = "{}/{}".format(output_path, dat)
     shutil.copyfile(source_path, destination_path)
