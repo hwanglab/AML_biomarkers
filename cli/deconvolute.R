@@ -42,6 +42,13 @@ parser <- add_argument(
   help = "should messages be printed? One of: DEBUG, INFO, WARN, ERROR",
   default = "INFO"
 )
+parser <- add_argument(
+  parser,
+  "--plot-similarity",
+  short = "-s",
+  help = "should the reference simelarity be plotted?",
+  flag = TRUE
+)
 
 argv <- parse_args(parser)
 
@@ -129,36 +136,50 @@ refs <- cache_rds(
   hash = list(diagnosis[["clusters"]])
 )
 
-info(logger, "Plotting similarity")
-sim_plot <- plot_similarity(refs)
+if (argv$plot_similarity) {
+  info(logger, "Plotting similarity")
+  sim_plot <- plot_similarity(refs)
+} else {
+  info(logger, "Skipping similarity plotting")
+}
 
 info(logger, "Reading in Bulk Data")
-target_data <- read_tsv(here("cibersort_in/target_data.txt")) %>%
+target_data <- read_tsv(here("cibersort_in/target_data.txt"), col_types = cols()) %>%
   column_to_rownames(var = "GeneSymbol") %>%
   as.matrix()
 
-tcga_data <- read_tsv(here("cibersort_in/tcga_data.txt")) %>%
+tcga_data <- read_tsv(here("cibersort_in/tcga_data.txt"), col_types = cols()) %>%
   column_to_rownames(var = "GeneSymbol") %>%
   as.matrix()
 
-beatAML_data <- read_tsv(here("cibersort_in/beat_aml.txt")) %>%
+beatAML_data <- read_tsv(here("cibersort_in/beat_aml.txt"), col_types = cols()) %>%
   column_to_rownames(var = "GeneSymbol") %>%
   as.matrix()
 
 methods <- get_decon_methods()[get_decon_methods() %!in% c("svr")] %>%
   as.vector()
 
-info(logger, "Deconvoluting Samples")
-
 datasets <- list(TARGET = target_data, TCGA = tcga_data, BeatAML = beatAML_data)
+datasets <- map(
+  datasets,
+  ~ .x %>%
+    as.data.frame() %>%
+    distinct() %>%
+    as.matrix()
+)
 
+info(logger, "Deconvoluting Samples")
 deconvoluted_samples <- cache_rds(
   map(
     datasets,
-    deconvolute,
-    sigMatrix = refs,
-    methods = methods,
-    use_cores = argv$cores
+    ~ suppressMessages(
+      deconvolute(
+        .x,
+        sigMatrix = refs,
+        methods = methods,
+        use_cores = argv$cores
+      )
+    )
   ),
   hash = list(datasets, refs),
   file = "deconvoluted_samples.rds",
