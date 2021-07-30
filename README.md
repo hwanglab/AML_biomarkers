@@ -7,14 +7,20 @@
 Note: You also need to have access to rsinglecell--a custom package. 
 
 ### Using Docker Image
-The simplest way to run this with Docker is using Visual Studio Code.
-Prior to building the container, edit the `docker-compose.yml` file with the following line depending on your host system (do not use realitive paths):
+The simplest way to run this with Docker is using Visual Studio Code--but most of these steps work without VSCode.
+
+Prior to building the container, you must do 2 things.
+Firstly, create a file called `.env` in the root directory and add your GitHub email (VAR:`EMAIL`), PAT (VAR:`GIT_TOKEN`), your name (VAR:`NAME`), and your GitHub username (VAR:`UNAME`).
+Your email should also be the same as used with CIBERSORTx.
+You should also add your CIBERSORTx token (VAR:`TOKEN`).
+This file will be automatically recognized at build time.
+Secondly, edit the `docker-compose.yml` file with the following line depending on your host system (do not use realitive paths):
 ```
 # Windows
 # %LOCALAPPDATA% is C:\Users\[Your Username]\AppData\Local
 %LOCALAPPDATA%/renv:/root/.local/share/renv:cached
 
-# MacOS
+# MacOS (notice the space in Application Support)
 /Users/[Your Username]/Library/Application Support/renv:/root/.local/share/renv:cached
 
 # Linux
@@ -41,6 +47,27 @@ Renv is used for this project.
 To install all the R packages just use `renv::restore()`. 
 (This is what happens during the docker container build.)
 The renv autoloader should automatically boostrap renv and `renv::restore()` will take care of installing all the correct package versions, although you will have to install system dependencies yourself.
+
+### Getting set up on OSC
+Singlularity was not trivial to use, therfore I directly loaded modules. The following should be added to your `.bashrc` file or prepend to any submission script:
+```
+# Set up R enviorment
+export PATH=$PATH:$HOME/.local/bin #if you like to use radian
+module load hdf5-serial/1.12.0
+module load magick/version
+module load fftw3/3.3.8
+module load R/4.1.0
+module load gdal/3.2.2
+module load proj/7.2.1
+module load geos/3.8.2
+module load python/3.7-2019.10
+
+# CIBERSORT options
+export TOKEN={Token from website}
+export EMAIL={email address used on website}
+```
+
+Then follow the directions under "Getting Setup without Docker"
 
 ## Running the Pipeline
 
@@ -73,6 +100,9 @@ These are all found in `/clinical_info`
 **deconvolute.R:**
     Prepares references for deconvolution and runs several deconvolution methods.
     The results are cached.
+
+**CIBERSORTx.py:**
+    Runs the CIBERSORTx algorithm on the data.
 
 **prepare_deconvoluted_samples.R:**
     Annotates deconvoluted samples with clinical information. Selects desired deconvolution method. 
