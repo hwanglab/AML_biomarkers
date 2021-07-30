@@ -1,4 +1,5 @@
 if (!("optparse" %in% installed.packages())) install.packages("optparse")
+if (!("styler" %in% installed.packages())) install.packages("styler")
 library(optparse)
 library(styler)
 

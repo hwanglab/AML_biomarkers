@@ -13,7 +13,7 @@
 				"echo": true,
 				"reveal": "never",
 				"focus": false,
-				"panel":"dedicated",
+				"panel": "dedicated",
 				"showReuseMessage": false,
 				"clear": false
 			}
