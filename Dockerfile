@@ -18,6 +18,15 @@ RUN apt-get install -y fftw3-dev
 RUN apt-get install -y default-jdk
 
 # set up R enviroment
+
+# copy over all "secrets"
+COPY .env /root/.bash_profile
+
+RUN git config --global user.name "${NAME}"
+RUN git config --global user.email "${EMAIL}"
+RUN  git config --global credential.helper \
+    '!f() { echo username=$UNAME; echo "password=$GIT_TOKEN"; };f'
+
 COPY renv.lock renv.lock
 COPY /renv/activate.R /renv/activate.R
 COPY requirements.txt requirements.txt
