@@ -1,4 +1,4 @@
-#!/usr/bin/env Rscript --no-save --quiet
+#!/usr/bin/env -S Rscript --no-save --quiet
 source("renv/activate.R")
 library(argparser)
 
@@ -45,7 +45,9 @@ suppressPackageStartupMessages({
   library(Seurat)
   library(SeuratDisk)
   library(here)
-  library(rsinglecell)
+  suppressWarnings(
+    library(rsinglecell)
+  )
   library(msigdbr)
   library(furrr)
   library(EnhancedVolcano)
@@ -62,6 +64,12 @@ if (argv$dir == "") {
   output_path <- paste0(parser$run_dir, "/outs/", argv$id)
   plots_path <- paste0(parser$run_dir, "/plots/", argv$id)
 }
+
+if (!dir.exists(here(plots_path))) {
+  debug(logger, "Plots directory is being created")
+  dir.create(here(plots_path))
+}
+
 if (!dir.exists(here(output_path))) {
   fatal(logger, "Output directory does not exist")
 }
@@ -96,16 +104,32 @@ gene_sets <- list(
 
 options("future.globals.maxSize" = 10 * 1024^3)
 
+info(logger, "Running GSVA")
+
+furr_options <- furrr_options(
+  stdout = FALSE,
+  seed = 1000000
+)
+
 gsva_res <- future_map(
   gene_sets,
   ~ RunGSVA(
     diagnosis,
     gene_sets = .x,
     replicates = argv$replicates
-  )
+  ),
+  .options = furr_options
 )
 
-stat_res <- future_map2(gsva_res, names(gsva_res), RunStats, p = 0.05)
+info(logger, "GSVA Done")
+
+stat_res <- future_map2(
+  gsva_res,
+  names(gsva_res),
+  RunStats,
+  p = 0.05,
+  .options = furr_options
+)
 
 file_names <- paste0(names(gene_sets), "_GSVA_volcano_plots.pdf")
 
