@@ -14,5 +14,8 @@ outs/
 cache/
 cli/lib/git_setup.sh
 .env
+<<<<<<< HEAD
 slurm
 *.sif
+=======
+>>>>>>> acdd63ef6ff50ed130a02d09392bbc350b25a342
