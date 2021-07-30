@@ -5,6 +5,7 @@ import argparse
 import os
 import shutil
 import logging
+import sys
 
 parser = argparse.ArgumentParser(description = "Deconvolute Samples")
 
@@ -17,8 +18,14 @@ parser.add_argument("--container-software", "-C", help="what container software 
 
 argv = parser.parse_args()
 
-logger = logging.getLogger("CIBERSORTx")
-logger.setLevel(vars(argv).get("verbose") * 10)
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+
+handler = logging.StreamHandler(sys.stdout)
+handler.setLevel(vars(argv).get("verbose"))
+formatter = logging.Formatter('%(levelname)s [%(asctime)s] %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 docker_singularity_cmd = vars(argv).get("container_software")
 
@@ -61,8 +68,16 @@ cibersort_cmd = ["--username", user_email, "--verbose", "FALSE", "--token", user
 
 if os.path.isfile("{}/{}".format(output_path, ref_filename)):
     logger.info("Existing Reference Found")
+elif os.path.isfile("{}/cibersort_results/{}".format(output_path, ref_filename)):
+    logger.info("Existing Reference Found")
+    logger.info("Copying Reference to CIBERSORTx input directory")
+    source_path = "{}/cibersort_results/{}".format(output_path, ref_filename)
+    destination_path = "{}/{}".format(output_path, ref_filename)
+    shutil.copyfile(source_path, destination_path)
 else:
     logger.info("Reference Not Found. Creating Reference")
+    if not os.path.isfile("{}/cibersort_ref_input.txt".format(output_path)):
+        raise FileNotFoundError("CIBERSORTx Reference Inputs not Found -- please run make_CIBERSORT_ref.R first")
     ref_create_cmd = ["--refsample", "cibersort_ref_input.txt", "--fraction", "0.50"]
     ref_run_cmd = [container_cmd, cibersort_cmd, ref_create_cmd]
     ref_run_cmd = [val for sublist in ref_run_cmd for val in sublist]
