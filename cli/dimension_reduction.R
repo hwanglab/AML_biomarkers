@@ -1,4 +1,4 @@
-#!/usr/bin/env -S Rscript --no-save --quiet
+#!/usr/bin/env Rscript
 source("renv/activate.R")
 library(argparser)
 
@@ -16,7 +16,7 @@ parser <- add_argument(
   parser,
   "--vals",
   short = "-a",
-  help = "values columns should be",
+  help = "values columns should be. Can specify more than 1 value per column",
   nargs = Inf
 )
 parser <- add_argument(
@@ -59,8 +59,35 @@ parser <- add_argument(
   help = "should messages be printed? One of: DEBUG, INFO, WARN, ERROR",
   default = "INFO"
 )
+parser <- add_argument(
+  parser,
+  "--column-names",
+  short = "-C",
+  help = "Just print column names of object",
+  flag = TRUE
+)
 
 argv <- parse_args(parser)
+
+if (argv$column_names) {
+  suppressPackageStartupMessages({
+  library(Seurat)
+  library(SeuratDisk)
+  library(tidyverse)
+})
+  seurat <- LoadH5Seurat(
+      file.path(Sys.getenv("AML_DATA"), "05_seurat_annotated.h5Seurat"),
+      assays = c("RNA", "SCT")
+    )
+  metadata <- seurat[[]] %>%
+    select(where(is.character)) %>%
+    lapply(unique) %>%
+    lapply(paste, collapse = ", ")
+
+  paste0(names(metadata),": ", metadata) %>% paste(collapse = "\n") %>% cat() 
+
+  quit(save = "no")
+}
 
 if (!is.na(argv$cols) & !is.na(argv$subset)) {
   warning("Both columns and expression supplied, using expression only")
@@ -118,20 +145,25 @@ diagnosis <- cache_rds(
   expr = {
     seurat <- LoadH5Seurat(
       file.path(Sys.getenv("AML_DATA"), "05_seurat_annotated.h5Seurat"),
-      assays = c("SCT", "RNA")
+      assays = c("RNA")
     )
 
-    DefaultAssay(seurat) <- "SCT"
+    #DefaultAssay(seurat) <- "SCT"
 
     debug(logger, "Subsetting Seurat Object")
     if (is.na(argv$subset)) {
-      res <- map2(argv$cols, argv$vals, .f = function(col, val) {
+      MatchValuesForSubset <- function(val, col) {
         rownames(filter(seurat[[]], .data[[col]] == val))
-      })
+      }
+
+      res <- map(argv$cols, .f = function(col, vals) {
+          unique(unlist(lapply(vals, MatchValuesForSubset, col)))
+        }, argv$vals)
 
       cells <- reduce(res, .f = function(x, y) {
         x[match(x, y)]
       })
+      cells <- cells[!is.na(cells)]
 
       diagnosis <- seurat[, cells]
     } else {
