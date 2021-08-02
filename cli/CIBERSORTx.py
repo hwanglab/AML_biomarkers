@@ -6,33 +6,39 @@ import os
 import shutil
 import logging
 import sys
+import binascii
 
 parser = argparse.ArgumentParser(description = "Deconvolute Samples")
 
 parser.add_argument("--dir", "-d", help="path to run directory", default=None)
-parser.add_argument("--ref", "-r", help="path to CIBERSORTx GEP", required=True)
 parser.add_argument("--id", "-i", help="ID to use for outputs", required=True)
 parser.add_argument("--cores", "-c", help="number of cores to use", default=1)
-parser.add_argument("--verbose", "-v", help="verbose level to use [1 (DEBUG) - 5 (CRITICAL)]", default=2)
-parser.add_argument("--container-software", "-C", help="what container software to use", default="singularity")
+parser.add_argument("--verbose", "-v", help="verbose level to use [1 (DEBUG) - 5 (CRITICAL)]", default=2, type=int)
+parser.add_argument("--mixture", "-m", help="what mixture file to use", required=True, nargs="+")
+parser.add_argument("--batch-correct", help="Should B mode batch correction be applied?", action="store_true")
 
 argv = parser.parse_args()
 
+logging.basicConfig(level=vars(argv).get("verbose"), format='%(levelname)s [%(asctime)s] %(message)s')
 logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
 
-handler = logging.StreamHandler(sys.stdout)
-handler.setLevel(vars(argv).get("verbose"))
-formatter = logging.Formatter('%(levelname)s [%(asctime)s] %(message)s')
-handler.setFormatter(formatter)
-logger.addHandler(handler)
+docker_singularity_cmd = "docker"
+try: 
+    subprocess.run("docker", stdout=subprocess.DEVNULL)
+except FileNotFoundError as e:
+    logger.info("Docker not Found. Falling back to Singularity")
+    docker_singularity_cmd = "singularity"
 
-docker_singularity_cmd = vars(argv).get("container_software")
+try: 
+    subprocess.run("singularity", stderr=subprocess.DEVNULL)
+except FileNotFoundError as e:
+    logger.critical("Singularity Not Found")
+    raise RuntimeError("Docker or Singularity cannot be located")
 
-if vars(argv).get("container_software") == "singularity":
+if docker_singularity_cmd == "singularity":
     use_singularity = True
     logger.info("Using Singularity")
-elif vars(argv).get("container_software") == "docker":
+elif docker_singularity_cmd == "docker":
     use_singularity = False
     logger.info("Using Docker")
 else:
@@ -46,7 +52,12 @@ else:
     output_path = vars(argv).get("dir") + "/outs/" + vars(argv).get("id")
     plots_path = vars(argv).get("dir") + "/plots/" + vars(argv).get("id")
 
-name_of_output_directory = "/cibersort_results"
+random_string = binascii.b2a_hex(os.urandom(15))
+name_of_output_directory = "/cibersort_results/{}".format(random_string)
+
+logger.debug("Output Directory:{}".format(name_of_output_directory))
+
+os.mkdir(output_path + name_of_output_directory)
 
 # set up bind mounts
 input_bind = output_path + ":/src/data"
@@ -63,7 +74,7 @@ else:
 
 logger.debug("Testing if Reference can be found")
 
-ref_filename = vars(argv).get("ref")
+ref_filename = "cibersort_ref_input.txt"
 cibersort_cmd = ["--username", user_email, "--verbose", "FALSE", "--token", user_token, " --single_cell", "TRUE", "--outdir", output_path + name_of_output_directory]
 
 if os.path.isfile("{}/{}".format(output_path, ref_filename)):
@@ -85,19 +96,27 @@ else:
     logger.info("Reference Creation Finished")
 
 def run_cmd(mixture):
-    specific_args = ["--sigmatrix", ref_filename, "--mixture", mixture, "--label", mixture]
+    specific_args = ["--sigmatrix", ref_filename, "--mixture", mixture, "--label", mixture, "--rmbatchBmode", str(vars(argv).get("batch_correct")).upper()]
     res = [container_cmd, cibersort_cmd, specific_args]
     flattened = [val for sublist in res for val in sublist]
     return flattened
 
-data = ["tcga_data.txt", "target_data.txt", "beat_aml.txt"]
+data = vars(argv).get("mixture")
 
 for dat in data:
     logger.info("Running CIBERSORTx on {}".format(dat))
     source_path = "{}/{}".format("cibersort_in", dat)
     destination_path = "{}/{}".format(output_path, dat)
     shutil.copyfile(source_path, destination_path)
+    logger.debug("The run command is: {}".format(" ".join(run_cmd(dat))))
     subprocess.run(run_cmd(dat), stdout=subprocess.DEVNULL)
+
+files = os.listdir("{}/cibersort_results/{}".format(output_path, random_string))
+
+for f in files:
+    source_path = "{}/cibersort_results/{}/{}".format(output_path, random_string, f)
+    destination_path = "{}/cibersort_results".format(output_path)
+    shutil.copyfile(source_path, destination_path)
 
 def write_invocation(argv, output_path):
     import time
