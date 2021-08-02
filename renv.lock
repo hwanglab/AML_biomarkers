@@ -1960,15 +1960,9 @@
       "Repository": "CRAN",
       "Hash": "5e3c5dc0b071b21fa128676560dbe94d"
     },
-<<<<<<< HEAD
     "rcmdcheck": {
       "Package": "rcmdcheck",
       "Version": "1.3.3",
-=======
-    "raster": {
-      "Package": "raster",
-      "Version": "3.4-10",
->>>>>>> acdd63ef6ff50ed130a02d09392bbc350b25a342
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "ed95895886dab6d2a584da45503555da"
@@ -2118,17 +2112,10 @@
       "RemoteType": "github",
       "RemoteHost": "api.github.com",
       "RemoteRepo": "rsinglecell",
-<<<<<<< HEAD
       "RemoteUsername": "rschauner",
       "RemoteRef": "HEAD",
       "RemoteSha": "24e994dfcaff2a15b4a59f369745d11cf44ee6ff",
       "Hash": "48eab6fa8922e2093b45488849ea80e7"
-=======
-      "RemoteRef": "master",
-      "RemoteSha": "7bf29941d4bacd87a6f5fee27d32e6a3fd255925",
-      "Remotes": "cole-trapnell-lab/monocle3, cole-trapnell-lab/leidenbase",
-      "Hash": "729004bb5de1ca5ed8add12de0898b69"
->>>>>>> acdd63ef6ff50ed130a02d09392bbc350b25a342
     },
     "rstatix": {
       "Package": "rstatix",
@@ -2223,16 +2210,6 @@
     "sessioninfo": {
       "Package": "sessioninfo",
       "Version": "1.1.1",
-<<<<<<< HEAD
-=======
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "308013098befe37484df72c39cf90d6e"
-    },
-    "sf": {
-      "Package": "sf",
-      "Version": "0.9-8",
->>>>>>> acdd63ef6ff50ed130a02d09392bbc350b25a342
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "308013098befe37484df72c39cf90d6e"
@@ -2512,16 +2489,6 @@
     "waldo": {
       "Package": "waldo",
       "Version": "0.2.5",
-<<<<<<< HEAD
-=======
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "20c45f1d511a3f730b7b469f4d11e104"
-    },
-    "warp": {
-      "Package": "warp",
-      "Version": "0.2.0",
->>>>>>> acdd63ef6ff50ed130a02d09392bbc350b25a342
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "20c45f1d511a3f730b7b469f4d11e104"
