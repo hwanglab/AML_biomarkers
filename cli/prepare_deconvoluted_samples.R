@@ -1,4 +1,4 @@
-#!/usr/bin/env -S Rscript --no-save --quiet
+#!/usr/bin/env Rscript
 source("renv/activate.R")
 library(argparser)
 
@@ -35,7 +35,14 @@ parser <- add_argument(
   "--model",
   short = "-m",
   help = "which model should be used?",
-  default = "rls_CIBERSORTx"
+  default = "CIBERSORTx"
+)
+parser <- add_argument(
+  parser,
+  "--batch-corrected",
+  short = "-B",
+  help = "was batch correction done using CIBERSORTx?",
+  flag = TRUE
 )
 
 argv <- parse_args(parser)
@@ -60,7 +67,23 @@ if (!dir.exists(here(output_path))) {
 
 logger <- logger(threshold = argv$verbose)
 
-data_filename <- list.files(
+if (argv$model == "CIBERSORTx") {
+  info(logger, "Preparing Data from CIBERSORTx")
+  data_filename <- c("tcga_data.txt", "target_data.txt", "beat_aml.txt")
+  bc_filename <- if_else(argv$batch_corrected, "_Adjusted.txt", "_Results.txt")
+  data_filename <- paste0("CIBERSORTx_", data_filename, bc_filename)
+  
+  deconvoluted <- data_filename %>%
+    map(read_tsv) %>%
+    map(~ select(.x, -`P-value`,	-Correlation,	-RMSE))
+  
+  target_deconvoluted <- deconvoluted[[2]]
+  tcga_deconvoluted <- deconvoluted[[1]]
+  beat_aml_decon <- deconvoluted[[3]]
+
+} else {
+  info(logger, "Preparing Data from granulator")
+  data_filename <- list.files(
   path = here(output_path, "cache"),
   full.names = TRUE,
   pattern = "^deconvoluted_samples_"
@@ -72,22 +95,26 @@ debug(logger, paste0("Importing Data from: ", data_filename))
 deconvoluted_samples <- readRDS(data_filename)
 
 model_use <- argv$model
+target_deconvoluted <- deconvoluted_samples$TARGET$proportions[[model_use]] 
+tcga_deconvoluted <- deconvoluted_samples$TCGA$proportions[[model_use]]
+beat_aml_decon <- deconvoluted_samples$BeatAML$proportions[[model_use]]
+}
 
 info(logger, "Preparing Clinical Information")
 source("cli/lib/prepare_clin_info.R")
 
-target_deconvoluted <- deconvoluted_samples$TARGET$proportions[[model_use]] %>%
+target_deconvoluted <- target_deconvoluted %>%
   as_tibble(rownames = "patient_USI") %>%
   separate(patient_USI, into = c(NA, NA, "USI", NA, NA), sep = "-") %>%
   left_join(clinical) %>%
   mutate(across(where(is_character), str_to_lower))
 
-tcga_deconvoluted <- deconvoluted_samples$TCGA$proportions[[model_use]] %>%
+tcga_deconvoluted <- tcga_deconvoluted %>%
   as_tibble(rownames = "case_submitter_id") %>%
   left_join(tcga_ann2) %>%
   filter(flt3_status == "Positive")
 
-beat_aml_decon <- deconvoluted_samples$BeatAML$proportions[[model_use]] %>%
+beat_aml_decon <- beat_aml_decon %>%
   as_tibble(rownames = "SAMPLE_ID") %>%
   left_join(beat_aml_clinical2) %>%
   filter(FLT3_ITD_CONSENSUS_CALL == "Positive")
