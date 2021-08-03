@@ -105,13 +105,13 @@ if (!is.na(argv$cols) || !is.na(argv$vals)) {
   }
 }
 # load other packages
+
 suppressPackageStartupMessages({
   library(Seurat)
   library(SeuratDisk)
   library(here)
   library(rsinglecell)
   library(readxl)
-  library(xlsx)
   library(biomaRt)
   library(survival)
   library(survminer)
@@ -123,6 +123,7 @@ suppressPackageStartupMessages({
   library(tidyverse)
 })
 
+print("Sourcing Functions")
 source(here("lib/functions.R"))
 logger <- logger(threshold = argv$verbose)
 
@@ -148,7 +149,7 @@ diagnosis <- cache_rds(
       assays = c("RNA")
     )
 
-    #DefaultAssay(seurat) <- "SCT"
+    DefaultAssay(seurat) <- "SCT"
 
     debug(logger, "Subsetting Seurat Object")
     if (is.na(argv$subset)) {

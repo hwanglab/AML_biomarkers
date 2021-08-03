@@ -1,9 +1,6 @@
 library(here)
 library(readxl)
-library(xlsx)
 library(tidyverse)
-
-source(here("lib/functions.R"))
 
 val <- read_excel(
   here("clinical_info/TARGET_AML_ClinicalData_Validation_20181213.xlsx")
@@ -12,8 +9,7 @@ dis <- read_excel(
   here("clinical_info/TARGET_AML_ClinicalData_Discovery_20181213.xlsx")
 )
 cog <- read.xlsx(here("clinical_info/AAML19B3Q_data_transfer.xlsx"),
-  sheetIndex = 2,
-  password = "AAML19B3Q"
+  sheet = 2,
 ) %>%
   sjlabelled::set_na(na = ".") %>%
   as_tibble() %>%
