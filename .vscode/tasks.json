@@ -17,14 +17,6 @@
 				"showReuseMessage": false,
 				"clear": false
 			}
-		},
-		{
-			"label": "Setup Enviorment",
-			"command": "./.env",
-			"runOptions": {
-				"runOn": "folderOpen"
-			},
-			"problemMatcher": []
 		}
 	]
 }

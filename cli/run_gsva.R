@@ -1,4 +1,4 @@
-#!/usr/bin/env -S Rscript --no-save --quiet
+#!/usr/bin/env Rscript
 source("renv/activate.R")
 library(argparser)
 
