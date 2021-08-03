@@ -89,7 +89,7 @@ if (argv$column_names) {
   quit(save = "no")
 }
 
-if (!is.na(argv$cols) & !is.na(argv$subset)) {
+if (!is.na(argv$cols) && !is.na(argv$subset)) {
   warning("Both columns and expression supplied, using expression only")
   argv$cols <- NA
   argv$vals <- NA
@@ -99,8 +99,8 @@ if (!is.na(argv$subset)) {
   stop("Do not use this argument: --subset")
 }
 
-if (!is.na(argv$cols) | !is.na(argv$vals)) {
-  if (is.na(argv$cols) & is.na(argv$vals)) {
+if (!is.na(argv$cols) || !is.na(argv$vals)) {
+  if (is.na(argv$cols) && is.na(argv$vals)) {
     stop("You must provide both the cols and vals argument")
   }
 }
