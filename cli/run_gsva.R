@@ -111,6 +111,7 @@ furr_options <- furrr_options(
   seed = 1000000
 )
 
+debug(logger, paste0("The Default Assay is: ", DefaultAssay(diagnosis)))
 gsva_res <- future_map(
   gene_sets,
   ~ RunGSVA(
