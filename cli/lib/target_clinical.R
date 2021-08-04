@@ -56,7 +56,8 @@ cog <- read.xlsx(here("clinical_info/AAML19B3Q_data_transfer.xlsx"),
 
 seq <- read_excel(
   file.path(
-    "../preprocessing/sample_info/Global Demultiplexing and Annotation.xlsx"
+    stringr::str_replace(Sys.getenv("AML_DATA"), "outs", "sample_info"), 
+    "Global Demultiplexing and Annotation.xlsx"
   )
 )
 
