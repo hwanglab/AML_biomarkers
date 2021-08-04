@@ -7,6 +7,7 @@ import shutil
 import logging
 import sys
 import binascii
+from datetime import datetime
 
 parser = argparse.ArgumentParser(description = "Deconvolute Samples")
 
@@ -28,7 +29,7 @@ def concatenate_list_data(list):
         result += str(element)
         result += " "
     return result
-if (len(vars(argv).get("mixture")) is 1):
+if (len(vars(argv).get("mixture")) == 1):
     name_to_use = vars(argv).get("mixture")[0]
 else:
     name_to_use = concatenate_list_data(vars(argv).get("mixture"))
@@ -37,7 +38,7 @@ logger = logging.getLogger("CIBERSORTx: [{}]".format(name_to_use))
 
 docker_singularity_cmd = "docker"
 try: 
-    subprocess.run("docker", stdout=subprocess.DEVNULL)
+    subprocess.run("docker", stderr=subprocess.DEVNULL)
 except FileNotFoundError as e:
     logger.info("Docker not Found. Falling back to Singularity")
     docker_singularity_cmd = "singularity"
@@ -85,11 +86,18 @@ except FileExistsError as e:
     logger.debug("Temporary directory already exists")
 
 # set up bind mounts
+if docker_singularity_cmd == "docker":
+    path_to_run_folder = os.path.abspath(os.getcwd())
+    output_path = "{}/{}".format(path_to_run_folder, output_path)
 input_bind = output_path + ":/src/data"
 output_bind = output_path + name_of_output_directory + ":/src/outdir"
    
 user_email = os.getenv("EMAIL")
 user_token = os.getenv("TOKEN")
+
+if user_email is None or user_token is None:
+    logger.critical("Enviorment Variables not found!")
+    raise RuntimeError("Env vars not found!")
 
 logger.info("Preparing Run Commands")
 if use_singularity:
@@ -99,8 +107,8 @@ else:
 
 logger.debug("Testing if Reference can be found")
 
-ref_filename = "cibersort_ref_input.txt"
-cibersort_cmd = ["--username", user_email, "--verbose", "FALSE", "--token", user_token, " --single_cell", "TRUE", "--outdir", output_path + name_of_output_directory]
+ref_filename = "CIBERSORTx_cell_type_sourceGEP.txt"
+cibersort_cmd = ["--username", user_email, "--verbose", str(vars(argv).get("debug_cibersort")).upper(), "--token", user_token, " --single_cell", "TRUE", "--outdir", output_path + name_of_output_directory]
 
 if os.path.isfile("{}/{}".format(output_path, ref_filename)):
     logger.info("Existing Reference Found")
@@ -129,10 +137,14 @@ for dat in data:
     shutil.copyfile(source_path, destination_path)
     logger.debug("The run command is: {}".format(" ".join(run_cmd(dat))))
     if vars(argv).get("debug_cibersort"):
-        subprocess_fun = subprocess.STDOUT
+        subprocess_fun = None
     else:
         subprocess_fun = subprocess.DEVNULL
-    subprocess.run(run_cmd(dat), stdout=subprocess_fun)
+    start_time = datetime.now()
+    subprocess.run(" ".join(run_cmd(dat)), shell=True, stdout=subprocess_fun)
+    end_time = datetime.now()
+    elapsed_time = end_time - start_time
+    logger.info("CIBERSORTx completed in {}".format(elapsed_time))
 
 files = os.listdir("{}/cibersort_results/{}".format(output_path, random_string))
 

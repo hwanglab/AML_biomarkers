@@ -23,7 +23,7 @@ logger = logging.getLogger("CIBERSORTx: Reference")
 
 docker_singularity_cmd = "docker"
 try: 
-    subprocess.run("docker", stdout=subprocess.DEVNULL)
+    subprocess.run("docker", stderr=subprocess.DEVNULL)
 except FileNotFoundError as e:
     logger.info("Docker not Found. Falling back to Singularity")
     docker_singularity_cmd = "singularity"
@@ -52,27 +52,21 @@ else:
     plots_path = vars(argv).get("dir") + "/plots/" + vars(argv).get("id")
 
 random_string = binascii.b2a_hex(os.urandom(15))
-name_of_output_directory = "/cibersort_results/"
+name_of_output_directory = "cibersort_results"
 
-logger.debug("Output Directory: {}".format(name_of_output_directory))
+logger.debug("Output Directory: {}/{}".format(output_path, name_of_output_directory))
 
 try:
-    os.mkdir(output_path + "/cibersort_results")
+    os.mkdir(output_path + name_of_output_directory)
 except FileExistsError as e:
     logger.debug("Output directory already created")
 
-try: 
-    os.mkdir(output_path + name_of_output_directory)
-except FileExistsError as e:
-    files = os.listdir(output_path + name_of_output_directory)
-    for f in files:
-        if f.startswith("temp"):
-            logger.warning("Temporary files already in temporary directory. Two CIBERSORTx instances may share an run directory.")
-    logger.debug("Temporary directory already exists")
-
 # set up bind mounts
+if docker_singularity_cmd == "docker":
+    path_to_run_folder = os.path.abspath(os.getcwd())
+    output_path = "{}/{}".format(path_to_run_folder, output_path)
 input_bind = output_path + ":/src/data"
-output_bind = output_path + name_of_output_directory + ":/src/outdir"
+output_bind = "{}/{}:/src/outdir".format(output_path, name_of_output_directory)
    
 user_email = os.getenv("EMAIL")
 user_token = os.getenv("TOKEN")
@@ -83,10 +77,13 @@ if use_singularity:
 else:
     container_cmd = ["docker", "run", "-v", input_bind, "-v", output_bind, "cibersortx/fractions"]
 
+logger.debug("The container command is: {}".format(" ".join(container_cmd)))
+
 logger.debug("Testing if Reference can be found")
 
-ref_filename = "cibersort_ref_input.txt"
-cibersort_cmd = ["--username", user_email, "--verbose", "FALSE", "--token", user_token, " --single_cell", "TRUE", "--outdir", output_path + name_of_output_directory]
+ref_filename = "CIBERSORTx_cell_type_sourceGEP.txt"
+cibersort_cmd = ["--username", user_email, "--verbose", "FALSE", "--token", user_token, " --single_cell", "TRUE", "--outdir", "{}/{}".format(output_path, name_of_output_directory)]
+logger.debug("The CIBERSORTx command is: {}".format(" ".join(cibersort_cmd)))
 
 if os.path.isfile("{}/{}".format(output_path, ref_filename)):
     logger.info("Existing Reference Found")
@@ -101,14 +98,21 @@ else:
     if not os.path.isfile("{}/cibersort_ref_input.txt".format(output_path)):
         raise FileNotFoundError("CIBERSORTx Reference Inputs not Found -- please run make_CIBERSORT_ref.R first")
     ref_create_cmd = ["--refsample", "cibersort_ref_input.txt", "--fraction", "0.50"]
+    logger.debug("Joining commands")
     ref_run_cmd = [container_cmd, cibersort_cmd, ref_create_cmd]
+    logger.debug("Unnesting commands")
     ref_run_cmd = [val for sublist in ref_run_cmd for val in sublist]
+    logger.debug("The run command is: {}".format(" ".join(ref_run_cmd)))
     if vars(argv).get("debug_cibersort"):
         subprocess_fun = subprocess.STDOUT
     else:
         subprocess_fun = subprocess.DEVNULL
-    subprocess.run(ref_run_cmd, stdout=subprocess_fun)
+    subprocess.run(" ".join(ref_run_cmd), shell=True, stdout=subprocess_fun)
     logger.info("Reference Creation Finished")
+    logger.info("Copying Reference to CIBERSORTx input directory")
+    source_path = "{}/cibersort_results/{}".format(output_path, ref_filename)
+    destination_path = "{}/{}".format(output_path, ref_filename)
+    shutil.copyfile(source_path, destination_path)
 
 def write_invocation(argv, output_path):
     import time
