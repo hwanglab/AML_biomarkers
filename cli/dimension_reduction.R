@@ -71,20 +71,22 @@ argv <- parse_args(parser)
 
 if (argv$column_names) {
   suppressPackageStartupMessages({
-  library(Seurat)
-  library(SeuratDisk)
-  library(tidyverse)
-})
+    library(Seurat)
+    library(SeuratDisk)
+    library(tidyverse)
+  })
   seurat <- LoadH5Seurat(
-      file.path(Sys.getenv("AML_DATA"), "05_seurat_annotated.h5Seurat"),
-      assays = c("RNA", "SCT")
-    )
+    file.path(Sys.getenv("AML_DATA"), "05_seurat_annotated.h5Seurat"),
+    assays = c("RNA", "SCT")
+  )
   metadata <- seurat[[]] %>%
     select(where(is.character)) %>%
     lapply(unique) %>%
     lapply(paste, collapse = ", ")
 
-  paste0(names(metadata),": ", metadata) %>% paste(collapse = "\n") %>% cat() 
+  paste0(names(metadata), ": ", metadata) %>%
+    paste(collapse = "\n") %>%
+    cat()
 
   quit(save = "no")
 }
@@ -123,7 +125,6 @@ suppressPackageStartupMessages({
   library(tidyverse)
 })
 
-print("Sourcing Functions")
 source(here("lib/functions.R"))
 logger <- logger(threshold = argv$verbose)
 
@@ -142,11 +143,12 @@ debug(logger, paste0("Writing Outputs to: ", here(output_path)))
 dir.create(here(output_path), showWarnings = FALSE)
 dir.create(here(plots_path), showWarnings = FALSE)
 
+if (argv$invalidate) info("The cache will be invalidated")
 diagnosis <- cache_rds(
   expr = {
     seurat <- LoadH5Seurat(
       file.path(Sys.getenv("AML_DATA"), "05_seurat_annotated.h5Seurat"),
-      assays = c("RNA")
+      assays = c("RNA", "SCT")
     )
 
     DefaultAssay(seurat) <- "SCT"
@@ -158,8 +160,8 @@ diagnosis <- cache_rds(
       }
 
       res <- map(argv$cols, .f = function(col, vals) {
-          unique(unlist(lapply(vals, MatchValuesForSubset, col)))
-        }, argv$vals)
+        unique(unlist(lapply(vals, MatchValuesForSubset, col)))
+      }, argv$vals)
 
       cells <- reduce(res, .f = function(x, y) {
         x[match(x, y)]
@@ -194,24 +196,54 @@ info(logger, "Doing Frequency Analysis")
 ## Find DE Clusters ----
 source(here("cli/lib/target_clinical.R"))
 
+debug(logger, "Finding Cluster Frequency")
+
+FindClusterFreq <- function(object, metadata, cluster, sort_by = NULL, .debug = FALSE) {
+  # quote expressions
+  md <- rlang::enquos(metadata)
+  c <- rlang::enquo(cluster)
+  if (.debug == TRUE) browser()
+  # select meta.data columns from seurat object and calculate freq
+  if (is.null(sort_by)) {
+    freq <- object %>%
+      dplyr::group_by(dplyr::across(.cols = all_of(c(metadata, cluster)))) %>%
+      summarise(n = n(), .groups = "keep") %>%
+      mutate(freq = n / sum(n) * 100)
+  } else {
+    sb <- rlang::enquo(sort_by)
+    freq <- object %>%
+      dplyr::group_by(dplyr::across(.cols = all_of(c(metadata, cluster)))) %>%
+      summarise(n = n(), .groups = "keep") %>%
+      mutate(freq = n / sum(n) * 100) %>%
+      dplyr::arrange(!!sb)
+  }
+  return(freq)
+}
+
+WilcoxTestSafe <- purrr::safely(wilcox.test, otherwise = list(p.value = NA))
+
+debug(logger, "Finding Cluster Frequency again")
 wilcox_clusters <- FindClusterFreq(
   diagnosis[[]],
   c("patient_id", "prognosis"),
   "clusters"
 ) %>%
-  group_by(cluster) %>%
-  summarise(pval = wilcox.test(freq ~ prognosis)$p.value, .groups = "keep") %>%
+  group_by(clusters) %>%
+  summarise(pval = WilcoxTestSafe(freq ~ prognosis)$result$p.value, .groups = "keep") %>%
   filter(pval <= argv$sig_level) %>%
-  pull(cluster)
+  pull(clusters)
+
+debug(logger, paste(wilcox_clusters, collapse = " "))
 
 freq <- FindClusterFreq(
   diagnosis[[]],
   c("patient_id", "prognosis"),
   "clusters"
 ) %>%
-  group_by(cluster) %>%
-  dplyr::select(patient_id, freq, cluster)
+  group_by(clusters) %>%
+  select(patient_id, freq, clusters)
 
+debug(logger, "Calculating Survival")
 survival_models <- freq %>%
   right_join(clinical, by = c("patient_id" = "USI")) %>%
   mutate(
@@ -225,7 +257,7 @@ survival_models <- freq %>%
     patient_id,
     freq
   ) %>%
-  remove_missing() %>%
+  #remove_missing() %>%
   filter(!near(freq, mean(freq))) %>%
   nest() %>%
   mutate(survival = map(
@@ -241,7 +273,7 @@ survival_models <- freq %>%
     log_p = -log(p_val),
     freq = map_dbl(data, ~ mean(.x[["freq"]])),
     wilcox = if_else(
-      cluster %in% wilcox_clusters,
+      clusters %in% wilcox_clusters,
       "wilcox_sig",
       "not_wilcox_sig"
     ),
@@ -260,7 +292,7 @@ ggplot(data = survival_models, mapping = aes(x = mean_diff, y = log_p)) +
   theme_classic() +
   ggrepel::geom_label_repel(
     data = filter(survival_models, p_val <= argv$sig_level),
-    mapping = aes(label = cluster)
+    mapping = aes(label = clusters)
   ) +
   xlab("Distance Between Poor (+) and Favorable (-)") +
   ylab("-log(P value)")
