@@ -1967,13 +1967,6 @@
       "Repository": "CRAN",
       "Hash": "ed95895886dab6d2a584da45503555da"
     },
-    "rcmdcheck": {
-      "Package": "rcmdcheck",
-      "Version": "1.3.3",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "ed95895886dab6d2a584da45503555da"
-    },
     "readr": {
       "Package": "readr",
       "Version": "1.4.0",
@@ -2013,7 +2006,8 @@
       "Package": "renv",
       "Version": "0.14.0",
       "Source": "Repository",
-      "Repository": "CRAN"
+      "Repository": "CRAN",
+      "Hash": "30e5eba91b67f7f4d75d31de14bbfbdc"
     },
     "repr": {
       "Package": "repr",
@@ -2241,12 +2235,12 @@
       "Repository": "CRAN",
       "Hash": "60437c5938a8d6abb1ac3b530bab024e"
     },
-    "slurmR": {
-      "Package": "slurmR",
-      "Version": "0.4-1",
+    "sjmisc": {
+      "Package": "sjmisc",
+      "Version": "2.8.7",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "7863c0d1f52e5bb1f861c57712475d43"
+      "Hash": "05eecd4e6038e22549da2cbb9d7a3e91"
     },
     "snow": {
       "Package": "snow",
@@ -2429,13 +2423,6 @@
       "Repository": "CRAN",
       "Hash": "360e904f9e623286e1a0c6ca0a98c5f6"
     },
-    "usethis": {
-      "Package": "usethis",
-      "Version": "2.0.1",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "360e904f9e623286e1a0c6ca0a98c5f6"
-    },
     "utf8": {
       "Package": "utf8",
       "Version": "1.2.1",
@@ -2491,13 +2478,6 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "20c45f1d511a3f730b7b469f4d11e104"
-    },
-    "whisker": {
-      "Package": "whisker",
-      "Version": "0.4",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "ca970b96d894e90397ed20637a0c1bbe"
     },
     "whisker": {
       "Package": "whisker",
