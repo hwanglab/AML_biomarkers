@@ -1,7 +1,7 @@
 WriteInvocation <- function(argv, output_path) {
   argv2 <- argv[2:length(argv)]
 
-  header <- commandArgs()[6]
+  header <- commandArgs()[4]
 
   args_used <- paste(names(argv2), argv2, sep = ": ")
   header2 <- paste(header, format(Sys.time()), sep = ": ")
