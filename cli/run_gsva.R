@@ -112,6 +112,93 @@ furr_options <- furrr_options(
 )
 
 debug(logger, paste0("The Default Assay is: ", DefaultAssay(diagnosis)))
+
+RunGSVA <- function(seurat, gene_sets, assay = NULL, slot = "data", features = NULL, 
+                    average = TRUE, replicates = NULL) 
+{
+  PackageCheck <- rsinglecell:::PackageCheck
+  if (!PackageCheck("GSVA", error = FALSE)) {
+    stop("Please install GSVA.")
+  }
+  if (!is.list(gene_sets)) stop("Gene sets must be of type `list` not ", 
+                                class(gene_sets))
+  assay <- assay %||% Seurat::DefaultAssay(seurat)
+  feautres <- features %||% unique(unlist(gene_sets))
+  if (!is.null(replicates)) average <- TRUE
+  if (is.null(replicates)) replicates <- 1
+  if (average) {
+    if (replicates > 1) {
+      if (!PackageCheck("scorecard", error = FALSE)) {
+        stop("Please install scorecard to do replicates")
+      }
+      DefaultAssay(seurat) <- assay
+      
+      # remove extra information from Seurat object to save space
+      seurat <- Seurat::DietSeurat(seurat,
+                                   counts = FALSE,
+                                   assays = assay,
+                                   dimreducs = FALSE,
+                                   graphs = FALSE)
+      rep_names <- paste0("rep", 1:replicates)
+      idents <- as.data.frame(Idents(seurat))
+      idents$idents <- rownames(idents)
+      split_rats <- rep_len(1 / replicates, replicates)
+      
+      rlang::inform(paste0("Splitting Object to create ", replicates, " replicates."))
+      meta_sub <- scorecard::split_df(idents, "Idents(seurat)", 
+                                      ratios = split_rats, 
+                                      name_dfs = rep_names)
+      
+      # Get Cell IDs for each object and subset the object
+      cells <- purrr::map(meta_sub, ~ .x[["idents"]])
+      objects <- purrr::map(cells, ~ subset(seurat, cells = .x))
+      
+      rlang::inform(paste0("Averaging expression for ", replicates, " replicates."))
+      expr_list <- purrr::map(objects, ~ Seurat::AverageExpression(.x, 
+                                                            assay = assay, 
+                                                            slot = slot, 
+                                                            features = features)[[1]])
+      new_cols <- purrr::map2(expr_list, rep_names, ~ .x %>%
+                         as.data.frame() %>%
+                         colnames() %>%
+                         paste0("_", .y))
+      expr_list <- purrr::map2(expr_list, new_cols, ~ `colnames<-`(.x, .y))
+      
+      rlang::inform(paste0("Preparing to run GSVA on ", replicates, " psudobulk replicates."))
+      suppressMessages({
+        expr <- expr_list %>% 
+          purrr::map(as.data.frame) %>% 
+          purrr::map(tibble::rownames_to_column) %>% 
+          purrr::reduce(dplyr::full_join) %>% 
+          column_to_rownames() %>% 
+          as.matrix()
+      })
+      
+      res <- GSVA::gsva(expr, gene_sets)
+      } else {
+      message("Averaging Expression in provided object...")
+      expr <- Seurat::AverageExpression(seurat, assays = assay, 
+                                        slot = slot, features = features)[[1]]
+      res <- GSVA::gsva(expr, gene_sets)
+    }
+  }
+  else {
+    stop("GSVA on single-cell expression has not been implemented well. Please run with average = TRUE only and make use of replicates")
+    message("Getting Assay data for provided features...")
+    dat <- Seurat::GetAssayData(seurat, assay = assay, slot = slot)
+    res <- list(0)
+    pb <- progress::progress_bar$new(length(gene_sets), 
+                                     format = "Running GSVA [:bar] :percent (:elapsed)")
+    for (i in seq_along(gene_sets)) {
+      expr <- dat[which(dat@Dimnames[[1]] %in% unique(unlist(gene_sets[[i]]))), 
+      ]
+      res[[i]] <- GSVA::gsva(as.matrix(expr), gene_sets[i])
+      pb$tick()
+    }
+  }
+  return(res)
+}
+
 gsva_res <- future_map(
   gene_sets,
   ~ RunGSVA(

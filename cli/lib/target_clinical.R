@@ -1,9 +1,6 @@
 library(here)
 library(readxl)
-library(xlsx)
 library(tidyverse)
-
-source(here("lib/functions.R"))
 
 val <- read_excel(
   here("clinical_info/TARGET_AML_ClinicalData_Validation_20181213.xlsx")
@@ -11,31 +8,30 @@ val <- read_excel(
 dis <- read_excel(
   here("clinical_info/TARGET_AML_ClinicalData_Discovery_20181213.xlsx")
 )
-cog <- read.xlsx(here("clinical_info/AAML19B3Q_data_transfer.xlsx"),
-  sheetIndex = 2,
-  password = "AAML19B3Q"
+cog <- read_xlsx(here("clinical_info/AAML19B3Q_data_transfer.xlsx"),
+  sheet = 2,
 ) %>%
   sjlabelled::set_na(na = ".") %>%
   as_tibble() %>%
   rename(
-    init_treatment_arm = Treatment.arm.at.enrollment,
-    fin_treatment_arm = AAML1031..Final.treatment.arm.assignment,
-    `Overall Survival Time in Days` = Days.to.OS.from.study.entry,
-    `FLT3/ITD allelic ratio` = Allelic.ratio,
-    `WBC at Diagnosis` = WBC..x10.3.MicroLiter..,
-    `Event Free Survival Time in Days` = Time.to.relapse.from.study.entry.in.days
+    init_treatment_arm = `Treatment arm at enrollment`,
+    fin_treatment_arm = `AAML1031: Final treatment arm assignment`,
+    `Overall Survival Time in Days` = `Days to OS from study entry`,
+    `FLT3/ITD allelic ratio` = `Allelic ratio`,
+    `WBC at Diagnosis` = `WBC (x10^3/MicroLiter)`,
+    `Event Free Survival Time in Days` = `Time to relapse from study entry in days`
   ) %>%
   mutate(
     `FLT3/ITD positive?` = if_else(
-      FLT3.results == "Internal tandem duplication",
+      `FLT3 results` == "Internal tandem duplication",
       "Yes",
       "No"
     ),
-    `CEBPA mutation` = if_else(CEBPA.mutation.status == "Positive",
+    `CEBPA mutation` = if_else(`CEBPA mutation status` == "Positive",
       "Yes",
       "No"
     ),
-    `NPM mutation` = if_else(Necleophosmin..NPM..mutation.status == "Positive",
+    `NPM mutation` = if_else(`Necleophosmin (NPM) mutation status` == "Positive",
       "Yes",
       "No"
     ),
