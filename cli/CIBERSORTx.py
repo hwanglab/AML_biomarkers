@@ -6,7 +6,7 @@ import os
 import shutil
 import logging
 import sys
-import binascii
+import uuid
 from datetime import datetime
 
 parser = argparse.ArgumentParser(description = "Deconvolute Samples")
@@ -66,7 +66,7 @@ else:
     output_path = vars(argv).get("dir") + "/outs/" + vars(argv).get("id")
     plots_path = vars(argv).get("dir") + "/plots/" + vars(argv).get("id")
 
-random_string = binascii.b2a_hex(os.urandom(15))
+random_string = uuid.uuid1()
 name_of_output_directory = "/cibersort_results/{}".format(random_string)
 
 logger.debug("Output Directory:{}".format(name_of_output_directory))
