@@ -13,7 +13,6 @@ parser = argparse.ArgumentParser(description = "Deconvolute Samples")
 
 parser.add_argument("--dir", "-d", help="path to run directory", default=None)
 parser.add_argument("--id", "-i", help="ID to use for outputs", required=True)
-parser.add_argument("--cores", "-c", help="number of cores to use", default=1)
 parser.add_argument("--verbose", "-v", help="verbose level to use [1 (DEBUG) - 5 (CRITICAL)]", default=2, type=int)
 parser.add_argument("--mixture", "-m", help="what mixture file to use", required=True, nargs="+")
 parser.add_argument("--batch-correct", help="Should B mode batch correction be applied?", action="store_true")
@@ -97,6 +96,8 @@ user_token = os.getenv("TOKEN")
 
 if user_email is None or user_token is None:
     logger.critical("Enviorment Variables not found!")
+    logger.debug("User Email: {}".format(user_email))
+    logger.debug("User Token: {}".format(user_token))
     raise RuntimeError("Env vars not found!")
 
 logger.info("Preparing Run Commands")
@@ -148,10 +149,18 @@ for dat in data:
 
 files = os.listdir("{}/cibersort_results/{}".format(output_path, random_string))
 
+remove = True
 for f in files:
     source_path = "{}/cibersort_results/{}/{}".format(output_path, random_string, f)
-    destination_path = "{}/cibersort_results".format(output_path)
-    shutil.copyfile(source_path, destination_path)
+    destination_path = "{}/cibersort_results/{}".format(output_path, f)
+    try: 
+        shutil.copyfile(source_path, destination_path)
+    except IsADirectoryError as e:
+        logger.error("Error moving files. Temporary Directory will not be deleted!")
+        remove = False
+
+if remove:
+    shutil.rmtree(source_path)
 
 def write_invocation(argv, output_path):
     import time
