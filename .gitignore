@@ -16,3 +16,4 @@ cli/lib/git_setup.sh
 .env
 slurm*
 *.sif
+*.DS_Store
