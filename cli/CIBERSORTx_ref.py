@@ -57,7 +57,7 @@ name_of_output_directory = "cibersort_results"
 logger.debug("Output Directory: {}/{}".format(output_path, name_of_output_directory))
 
 try:
-    os.mkdir(output_path + name_of_output_directory)
+    os.mkdir("{}/{}".format(output_path, name_of_output_directory))
 except FileExistsError as e:
     logger.debug("Output directory already created")
 
