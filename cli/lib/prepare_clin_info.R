@@ -6,39 +6,40 @@ library(tidyverse)
 source(here("lib/functions.R"))
 ### TARGET ----
 
+debug(logger, "Preparing TARGET Data")
+debug(logger, "Reading Validation Data")
 val <- read_excel(
-  here("clinical_info/TARGET_AML_ClinicalData_Validation_20181213.xlsx"),
-  col_types = cols()
+  here("clinical_info/TARGET_AML_ClinicalData_Validation_20181213.xlsx")
 )
+debug(logger, "Reading Discovery Data")
 dis <- read_excel(
-  here("clinical_info/TARGET_AML_ClinicalData_Discovery_20181213.xlsx"),
-  col_types = cols()
+  here("clinical_info/TARGET_AML_ClinicalData_Discovery_20181213.xlsx")
 )
-cog <- read.xlsx(here("clinical_info/AAML19B3Q_data_transfer.xlsx"),
-  sheetIndex = 2,
-  password = "AAML19B3Q"
+debug(logger, "Reading COG Data")
+cog <- read_excel(here("clinical_info/AAML19B3Q_data_transfer.xlsx"),
+  sheet = 2
 ) %>%
   sjlabelled::set_na(na = ".") %>%
   as_tibble() %>%
   rename(
-    init_treatment_arm = Treatment.arm.at.enrollment,
-    fin_treatment_arm = AAML1031..Final.treatment.arm.assignment,
-    `Overall Survival Time in Days` = Days.to.OS.from.study.entry,
-    `FLT3/ITD allelic ratio` = Allelic.ratio,
-    `WBC at Diagnosis` = WBC..x10.3.MicroLiter..,
-    `Event Free Survival Time in Days` = Time.to.relapse.from.study.entry.in.days
+    init_treatment_arm = `Treatment arm at enrollment`,
+    fin_treatment_arm = `AAML1031: Final treatment arm assignment`,
+    `Overall Survival Time in Days` = `Days to OS from study entry`,
+    `FLT3/ITD allelic ratio` = `Allelic ratio`,
+    `WBC at Diagnosis` = `WBC (x10^3/MicroLiter)`,
+    `Event Free Survival Time in Days` = `Time to relapse from study entry in days`
   ) %>%
   mutate(
     `FLT3/ITD positive?` = if_else(
-      FLT3.results == "Internal tandem duplication",
+      `FLT3 results` == "Internal tandem duplication",
       "Yes",
       "No"
     ),
-    `CEBPA mutation` = if_else(CEBPA.mutation.status == "Positive",
+    `CEBPA mutation` = if_else(`CEBPA mutation status` == "Positive",
       "Yes",
       "No"
     ),
-    `NPM mutation` = if_else(Necleophosmin..NPM..mutation.status == "Positive",
+    `NPM mutation` = if_else(`Necleophosmin (NPM) mutation status` == "Positive",
       "Yes",
       "No"
     ),
@@ -68,6 +69,7 @@ clinical <- bind_rows(val, dis) %>%
   separate(`TARGET USI`, into = c(NA, NA, "USI"), sep = "-")
 
 ### TCGA ----
+debug(logger, "Preparing TCGA Data")
 tcga_ann <- read_tsv(
   here("data/tcga/clinical.cart.2021-04-22/clinical.tsv"),
   na = "'--"
@@ -88,10 +90,10 @@ tcga_ann2 <- read_tsv(
   ) %>%
   separate(flt3_status, into = c(NA, NA, "flt3_status"), sep = " ") %>%
   rename(`Case ID` = bcr_patient_barcode) %>%
-  left_join(tcga_ann) %>%
-  mutate(case_submitter_id = `Case ID`)
+  left_join(tcga_ann) 
 
 ### BeatAML ----
+debug(logger, "Preparing BeatAML Data")
 beat_aml_clinical <- read_tsv(
   here("data/aml_ohsu_2018/data_clinical_sample.txt"),
   skip = 4
