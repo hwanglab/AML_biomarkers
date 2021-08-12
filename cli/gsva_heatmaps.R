@@ -64,7 +64,14 @@ sheet_names <- excel_sheets(data_filename) %>% str_subset("[^All Gene Sets]")
 data <- map(sheet_names, ~ as.data.frame(read_excel(data_filename, sheet = .x)))
 names(data) <- sheet_names
 
+if (!any(is.na(argv$clusters))) {
+  info(logger, "Selecting Clusters")
 data_filtered <- map(data, filter, cluster %in% argv$clusters)
+  file_name_ext <- paste0(argv$clusters, collapse = "_")
+} else {
+  data_filtered <- data
+  file_name_ext <- "all_clusters"
+}
 
 data_filtered <- data_filtered %>%
   map(select, geneset, logFC, cluster) %>%
@@ -74,6 +81,8 @@ data_filtered <- data_filtered %>%
 
 plots <- list(0)
 
+cluster_cols <- if_else(length(argv$clusters) == 1, TRUE, FALSE)
+
 for (i in seq_along(data_filtered)) {
     filename <- paste0(names(data_filtered)[[i]], "_heatmap.pdf")
   plots[[i]] <- pheatmap(
@@ -81,7 +90,8 @@ for (i in seq_along(data_filtered)) {
     color = viridis::magma(n = 100),
     fontsize_row = 5,
     cellwidth = 10,
-    filename = here(plots_path, filename)
+    filename = here(plots_path, filename),
+    cluster_cols = cluster_cols
   )
 }
 
