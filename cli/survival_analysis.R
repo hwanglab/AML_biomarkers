@@ -14,15 +14,14 @@ parser <- add_argument(
   parser,
   "--id",
   short = "-i",
-  help = "ID to use for outputs",
-  default = "test"
+  help = "ID to use for outputs"
 )
 parser <- add_argument(
   parser,
   "--test-id",
   short = "-I",
   help = "ID to use for outputs. Must be unique.",
-  default = 1
+  default = "incremental"
 )
 parser <- add_argument(
   parser,
@@ -90,7 +89,7 @@ suppressPackageStartupMessages({
   library(survminer)
   library(scorecard)
   library(glmnet)
-  library(rsinglecell)
+  suppressWarnings(library(rsinglecell))
   library(tidyverse)
 })
 
@@ -107,9 +106,7 @@ if (argv$dir == "") {
 data_filename <- here(output_path, "cache/clinical_deconvoluted.rds")
 
 if (argv$test_id == "incremental") {
-  dir_names <- list.dirs(here(output_path)) %>%
-    str_subset("[^cache]$") %>%
-    str_subset(paste0("[^", argv$id, "]$"))
+  dir_names <- list.dirs(here(output_path), full.names = FALSE)
   debug(
     logger,
     paste0(
@@ -117,22 +114,31 @@ if (argv$test_id == "incremental") {
       paste0(dir_names, collapse = ", ")
     )
   )
+  dir_names <- as.numeric(dir_names)
+  dir_names <- dir_names[!is.na(dir_names)]
   if (is_empty(dir_names)) {
     dir_names <- 0
   }
-  dir_names <- as.numeric(dir_names)
+
+  debug(
+    logger,
+    paste0(
+      "The following directories exist: ",
+      paste0(dir_names, collapse = ", ")
+    )
+  )
   new_name <- max(dir_names, na.rm = TRUE) + 1
   info(logger, c("Using ", new_name, " as the test id"))
   output_path <- here(output_path, new_name)
   plots_path <- here(plots_path, new_name)
-  dir.create(output_path)
-  dir.create(plots_path)
+  dir.create(output_path, showWarnings = FALSE)
+  dir.create(plots_path, recursive = TRUE, showWarnings = FALSE)
 } else {
   output_path <- here(output_path, argv$test_id)
   plots_path <- here(plots_path, argv$test_id)
   info(logger, c("Using ", argv$test_id, " as the test id"))
-  dir.create(output_path)
-  dir.create(plots_path)
+  dir.create(output_path, showWarnings = FALSE)
+  dir.create(plots_path, recursive = TRUE, showWarnings = FALSE)
 }
 
 if (!dir.exists(here(output_path))) {
@@ -141,7 +147,13 @@ if (!dir.exists(here(output_path))) {
 
 debug(logger, paste0("Importing Data from: ", data_filename))
 
-data <- readRDS(data_filename)
+data <- tryCatch(
+  readRDS(data_filename),
+  error = function(e) {
+    error(loggger, "Cannot find annotated deconvoluted samples.")
+    quit()
+  }
+)
 
 debug(logger, "Splitting Data")
 if (argv$split &
@@ -240,7 +252,28 @@ if (argv$exclude) {
   )
 }
 
-lasso_model <- rlang::parse_expr(file(path)) %>% rlang::eval_bare()
+debug(logger, paste0("Lasso Model Command: ", suppressWarnings(readLines(path))))
+
+suppressWarnings({
+  lasso_model <- rlang::parse_expr(file(path)) %>% rlang::eval_bare()
+})
+
+lasso_model_red <- coef(lasso_model)
+
+lasso_model_red %>%
+  as.data.frame() %>%
+  mutate(rownames = rownames(lasso_model_red), .before = 1) %>%
+  write_tsv(here(output_path, "lasso_model_coefs.tsv"))
+
+lasso_model_red <- lasso_model_red[2:nrow(lasso_model_red), ]
+lasso_model_red <- lasso_model_red[lasso_model_red != 0]
+
+if (length(lasso_model_red) == 0) {
+  error(logger, "The lasso model is empty!")
+  source(here("lib/WriteInvocation.R"))
+  WriteInvocation(argv, output_path = here(output_path, "invocation"))
+  quit()
+}
 
 times <- c(
   "Event Free Survival Time in Days",
@@ -252,10 +285,12 @@ event_col <- c("First Event" = "relapse", "vital_status" = "Dead", "status" = 1)
 
 debug(logger, "Doing Survival Analysis")
 source(here("lib/batch_survival.R"))
-results <- BatchSurvival(data, times, lasso_model, event_col)
+suppressWarnings({
+  results <- BatchSurvival(data, times, lasso_model, event_col)
+  })
 
 pdf(here(plots_path, "survival.pdf"))
-results$plots
+results$plots %>% walk(print)
 graphics.off()
 
 write_csv(results$stats, file = here(output_path, "survival.csv"))
