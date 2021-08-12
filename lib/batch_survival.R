@@ -26,6 +26,7 @@ BatchSurvival <- function(data, time, lasso_model, event_col) {
     stats_final <- list(0)
     plots_final <- list(0)
     for (dataset in seq_along(data)) {
+        debug(logger, paste0("Batch Survival on: ", names(data)[[dataset]]))
         x <- as_tibble(data[[dataset]])
         avail_cols <- events_[names(event_col) %in% colnames(data[[dataset]])]
         avail_events <- event_col[names(event_col) %in% colnames(data[[dataset]])]
@@ -34,14 +35,14 @@ BatchSurvival <- function(data, time, lasso_model, event_col) {
         plots <- list(0)
         
         for (st in seq_along(avail_cols)) {
-            message("Using ", avail_cols[[st]], " on ", names(data)[[dataset]])
+            debug(logger, paste0("Using ", avail_cols[[st]], " on ", names(data)[[dataset]]))
             x[["status"]] <- if_else(x[[avail_cols[[st]]]] == avail_events[[st]], 1, 0)
             x[["score"]] <- UseLASSOModelCoefs(x, coef(lasso_model))
             x[["score_bin"]] <- if_else(x$score >= median(x$score, na.rm = TRUE), "High", "Low")
             res <- list(0)
 
             for (time_axis in seq_along(times)) {
-                pSuv <- purrr::possibly(DoSurvialAnalysis, otherwise = NA)
+                pSuv <- purrr::possibly(DoSurvivalAnalysis, otherwise = NA)
                 desc <- paste0(names(data)[[dataset]], ": ", avail_cols[[st]])
                 res[[time_axis]] <- pSuv(x,
                     !!rlang::sym(times[[time_axis]]),
