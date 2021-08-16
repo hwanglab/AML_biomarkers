@@ -72,13 +72,15 @@ clinical <- bind_rows(val, dis) %>%
 debug(logger, "Preparing TCGA Data")
 tcga_ann <- read_tsv(
   here("data/tcga/clinical.cart.2021-04-22/clinical.tsv"),
-  na = "'--"
+  na = "'--",
+  col_types = cols()
 )
 
 tcga_ann2 <- read_tsv(
   here("clinical_info/nationwidechildrens.org_clinical_patient_laml.txt"),
   skip = 1,
-  na = c("[Not Available]", "[Not Applicable]")
+  na = c("[Not Available]", "[Not Applicable]"),
+  col_types = cols()
 ) %>%
   filter(bcr_patient_uuid != "CDE_ID:") %>%
   map_df(parse_guess) %>%
@@ -90,16 +92,28 @@ tcga_ann2 <- read_tsv(
   ) %>%
   separate(flt3_status, into = c(NA, NA, "flt3_status"), sep = " ") %>%
   rename(`Case ID` = bcr_patient_barcode) %>%
-  left_join(tcga_ann) 
+  left_join(
+    tcga_ann,
+    by = c(
+      "days_to_birth",
+      "gender",
+      "race",
+      "ethnicity",
+      "vital_status",
+      "days_to_death"
+    )
+  )
 
 ### BeatAML ----
 debug(logger, "Preparing BeatAML Data")
 beat_aml_clinical <- read_tsv(
   here("data/aml_ohsu_2018/data_clinical_sample.txt"),
-  skip = 4
+  skip = 4,
+  col_types = cols()
 )
 beat_aml_survival <- read_tsv(
-  here("data/aml_ohsu_2018/KM_Plot__Overall_Survival__(months).txt")
+  here("data/aml_ohsu_2018/KM_Plot__Overall_Survival__(months).txt"),
+  col_types = cols()
 )
 
 beat_aml_clinical2 <- beat_aml_clinical %>%
