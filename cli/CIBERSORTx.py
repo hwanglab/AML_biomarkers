@@ -8,6 +8,7 @@ import logging
 import sys
 import uuid
 from datetime import datetime
+import lib
 
 parser = argparse.ArgumentParser(description = "Deconvolute Samples")
 
@@ -15,25 +16,25 @@ parser.add_argument("--dir", "-d", help="path to run directory", default=None)
 parser.add_argument("--id", "-i", help="ID to use for outputs", required=True)
 parser.add_argument("--verbose", "-v", help="verbose level to use [1 (DEBUG) - 5 (CRITICAL)]", default=2, type=int)
 parser.add_argument("--mixture", "-m", help="what mixture file to use", required=True, nargs="+")
-parser.add_argument("--batch-correct", help="Should B mode batch correction be applied?", action="store_true")
+parser.add_argument("--batch-correct-B","-X", help="Should B mode batch correction be applied?", action="store_true")
+parser.add_argument("--batch-correct-S", "-S", help="Should S mode batch correction be applied?", action="store_true")
+
 parser.add_argument("--debug-cibersort", "-D", help="Should the max amount of information from CIBERSORT be printed?", action="store_true")
 
 argv = parser.parse_args()
 
-logging.basicConfig(level=vars(argv).get("verbose"), format="%(levelname)s [%(asctime)s] %(name)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+logging.basicConfig(level=argv.verbose, format="%(levelname)s [%(asctime)s] %(name)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 
-def concatenate_list_data(list):
-    result= ''
-    for element in list:
-        result += str(element)
-        result += " "
-    return result
-if (len(vars(argv).get("mixture")) == 1):
-    name_to_use = vars(argv).get("mixture")[0]
+if (len(argv.mixture) == 1):
+    name_to_use = argv.mixture[0]
 else:
-    name_to_use = concatenate_list_data(vars(argv).get("mixture"))
+    name_to_use = lib.concatenate_list_data(argv.mixture)
 
 logger = logging.getLogger("CIBERSORTx: [{}]".format(name_to_use))
+
+if argv.batch_correct_B & argv.batch_correct_S:
+    logger.fatal("Cannot supply both B and S mode batch correction")
+    quit()
 
 docker_singularity_cmd = "docker"
 try: 
@@ -58,17 +59,18 @@ else:
     raise SyntaxError("Only Singularity and Docker are supported")
 
 # set up outputs
-if vars(argv).get("dir") == None:
-    output_path = "outs/" + vars(argv).get("id")
-    plots_path = "plots/" + vars(argv).get("id")
+if argv.dir == None:
+    output_path = "outs/" + argv.id
+    plots_path = "plots/" + argv.id
 else:
-    output_path = vars(argv).get("dir") + "/outs/" + vars(argv).get("id")
-    plots_path = vars(argv).get("dir") + "/plots/" + vars(argv).get("id")
+    output_path = "{}/outs/{}".format(argv.dir, argv.id)
+    plots_path = "{}/plots/{}".format(argv.dir, argv.id)
 
 random_string = uuid.uuid1()
-name_of_output_directory = "/cibersort_results/{}".format(random_string)
+cibersort_output = lib.setup_results_dir(argv)
+name_of_output_directory = "{}/{}".format(cibersort_output, random_string)
 
-logger.debug("Output Directory:{}".format(name_of_output_directory))
+logger.debug("Output Directory: {}".format(name_of_output_directory))
 
 try:
     os.mkdir(output_path + "/cibersort_results")
@@ -76,9 +78,9 @@ except FileExistsError as e:
     logger.debug("Output directory already created")
 
 try: 
-    os.mkdir(output_path + name_of_output_directory)
+    os.mkdir("{}/{}".format(output_path, name_of_output_directory))
 except FileExistsError as e:
-    files = os.listdir(output_path + name_of_output_directory)
+    files = os.listdir("{}/{}".format(output_path, name_of_output_directory))
     for f in files:
         if f.startswith("temp"):
             logger.warning("Temporary files already in temporary directory. Two CIBERSORTx instances may share an run directory.")
@@ -89,7 +91,7 @@ if docker_singularity_cmd == "docker":
     path_to_run_folder = os.path.abspath(os.getcwd())
     output_path = "{}/{}".format(path_to_run_folder, output_path)
 input_bind = output_path + ":/src/data"
-output_bind = output_path + name_of_output_directory + ":/src/outdir"
+output_bind = "{}/{}:/src/outdir".format(output_path, name_of_output_directory)
    
 user_email = os.getenv("EMAIL")
 user_token = os.getenv("TOKEN")
@@ -109,7 +111,7 @@ else:
 logger.debug("Testing if Reference can be found")
 
 ref_filename = "CIBERSORTx_cell_type_sourceGEP.txt"
-cibersort_cmd = ["--username", user_email, "--verbose", str(vars(argv).get("debug_cibersort")).upper(), "--token", user_token, " --single_cell", "TRUE", "--outdir", output_path + name_of_output_directory]
+cibersort_cmd = ["--username", user_email, "--verbose", str(argv.debug_cibersort).upper(), "--token", user_token, " --single_cell", "TRUE", "--outdir", "{}/{}".format(output_path, name_of_output_directory)]
 
 if os.path.isfile("{}/{}".format(output_path, ref_filename)):
     logger.info("Existing Reference Found")
@@ -124,20 +126,19 @@ else:
     raise RuntimeError("Reference Not Found")
     
 def run_cmd(mixture):
-    specific_args = ["--sigmatrix", ref_filename, "--mixture", mixture, "--label", mixture, "--rmbatchBmode", str(vars(argv).get("batch_correct")).upper()]
-    res = [container_cmd, cibersort_cmd, specific_args]
+    specific_args = ["--sigmatrix", ref_filename, "--mixture", mixture, "--label", mixture]
+    bc_args = ["--rmbatchBmode", str(argv.batch_correct_B).upper(), "--rmbatchSmode", str(argv.batch_correct_S).upper(), "--refsample", "cibersort_ref_input.txt"]
+    res = [container_cmd, cibersort_cmd, specific_args, bc_args]
     flattened = [val for sublist in res for val in sublist]
     return flattened
 
-data = vars(argv).get("mixture")
-
-for dat in data:
+for dat in argv.mixture:
     logger.info("Running CIBERSORTx on {}".format(dat))
     source_path = "{}/{}".format("cibersort_in", dat)
     destination_path = "{}/{}".format(output_path, dat)
     shutil.copyfile(source_path, destination_path)
     logger.debug("The run command is: {}".format(" ".join(run_cmd(dat))))
-    if vars(argv).get("debug_cibersort"):
+    if argv.debug_cibersort:
         subprocess_fun = None
     else:
         subprocess_fun = subprocess.DEVNULL
@@ -151,8 +152,8 @@ files = os.listdir("{}/cibersort_results/{}".format(output_path, random_string))
 
 remove = True
 for f in files:
-    source_path = "{}/cibersort_results/{}/{}".format(output_path, random_string, f)
-    destination_path = "{}/cibersort_results/{}".format(output_path, f)
+    source_path = "{}/{}/{}".format(output_path, name_of_output_directory, f)
+    destination_path = "{}/{}/{}".format(output_path, cibersort_output, f)
     try: 
         shutil.copyfile(source_path, destination_path)
     except IsADirectoryError as e:
@@ -161,27 +162,5 @@ for f in files:
 
 if remove:
     shutil.rmtree(source_path)
-
-def write_invocation(argv, output_path):
-    import time
-    import sys
-    args = vars(argv).items()
-    args = list(args)
-    sys_cmd = sys.argv[0]
-
-    sys_time = time.asctime(time.localtime(time.time()))
-
-    header = "{}: {}------------------".format(sys_cmd, sys_time)
-
-    fname = output_path + "/invocation"
-    file1 = open(fname, "a")  # append mode
-    file1.write(header)
-    file1.write("\n")
-    for arg in args:
-        formatted_args = "{}: {}".format(arg[0], arg[1])
-        file1.write(formatted_args)
-        file1.write("\n")
-    file1.write("\n")
-    file1.close()
  
-write_invocation(argv, output_path)
+lib.write_invocation(argv, output_path)
