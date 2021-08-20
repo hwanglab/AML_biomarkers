@@ -213,7 +213,12 @@ datasets[["target"]]$samples <- datasets[["target"]]$samples %>%
   str_remove("-[:alnum:]{3}-[:alnum:]{3}")
 
 clinical <- rename(clinical, samples = USI) %>%
-  mutate(across(.cols = c("FLT3/ITD positive?", "CEBPA mutation"), .fns = tolower))
+  mutate(
+    across(
+      .cols = c("FLT3/ITD positive?", "CEBPA mutation"), 
+      .fns = tolower
+      )
+      )
 tcga_ann <- rename(tcga_ann, samples = case_submitter_id)
 beat_aml_clinical <- rename(beat_aml_clinical, samples = SAMPLE_ID)
 
@@ -257,6 +262,40 @@ if ("BeatAML" %in% argv$datasets) {
 }
 
 debug(logger, glue("Names of final data sets: {PrintGluedList(names(data))}"))
+
+# info(logger, "Preparing scaled data using CIBERSORTx GEP")
+
+# goal is to get the row means for the clusters and multiply those with the datasets
+
+# cibersort_gep_filtered[cibersort_gep_filtered == 1] <- NA
+
+# cibersort_gep_filtered <- cibersort_gep_filtered %>%
+#   mutate(
+#     row_mean = rowSums(
+#       select(., -genesymbols),
+#       na.rm = TRUE
+#     ) / (ncol(cibersort_gep_filtered) - 1)
+#   )
+# cibersort_gep_filtered <- select(cibersort_gep_filtered, -matches("cluster"))
+
+# temp_data <- data$FLT3
+# res <- list(0)
+
+# CIBERSORTxScaleFactor <- function(data, gene, gep) {
+#   dat <- as_vector(data[, gene])
+#   scale_factor <- gep[which(gep$genesymbols == gene), "row_mean"] %>%
+#   pull(row_mean)
+#   return(dat * scale_factor)
+# }
+# PossiblyCIBERSORTxScaleFactor <- possibly(CIBERSORTxScaleFactor, otherwise = NULL)
+
+# map(
+#   cibersort_gep_filtered$genesymbols,
+#   ~ PossiblyCIBERSORTxScaleFactor(temp_data, .x, cibersort_gep_filtered)
+# ) %>% print()
+
+# TODO: Row Bind
+
 debug(logger, "Splitting Data")
 if (argv$split &
   !file.exists(
