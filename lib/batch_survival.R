@@ -25,6 +25,7 @@ BatchSurvival <- function(data, time, lasso_model, event_col) {
 
     stats_final <- list(0)
     plots_final <- list(0)
+    score_final <- list(0)
     for (dataset in seq_along(data)) {
         debug(logger, paste0("Batch Survival on: ", names(data)[[dataset]]))
         x <- as_tibble(data[[dataset]])
@@ -68,8 +69,9 @@ BatchSurvival <- function(data, time, lasso_model, event_col) {
         }
         plots_final[[dataset]] <- plots
         stats_final[[dataset]] <- reduce(stats, bind_rows)
+        score_final[[dataset]] <- x[["score"]]
     }
-    res1 <- stats_final %>% keep(is.data.frame) %>% reduce(bind_rows)    
+    res1 <- stats_final %>% keep(is.data.frame) %>% reduce(bind_rows)
     res2 <- plots_final %>% unlist(recursive = FALSE) %>% unlist(recursive = FALSE)
-    return(list(stats = res1, plots = res2))
+    return(list(stats = res1, plots = res2, scores = score_final))
 }
