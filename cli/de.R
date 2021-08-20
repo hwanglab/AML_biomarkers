@@ -93,7 +93,7 @@ seurat <- readRDS(data_filename)
 if (argv$cores == 1) {
   plan("sequential")
 } else {
-  plan("multisession", workers = argv$cores)
+  plan(tweak("multicore", workers = as.integer(argv$cores)))
 }
 
 info(logger, "Printing Plots")
