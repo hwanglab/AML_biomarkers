@@ -36,8 +36,9 @@ parser$add_argument(
 parser$add_argument(
   "--verbose",
   "-v",
-  help = "should messages be printed? One of: DEBUG, INFO, WARN, ERROR",
+  help = "should messages be printed?",
   default = "INFO"
+  choices = c("DEBUG", "INFO", "WARN", "ERROR")
 )
 parser$add_argument(
   "--training-data",
