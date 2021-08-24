@@ -50,7 +50,6 @@ suppressPackageStartupMessages({
   library(log4r)
 })
 
-
 logger <- logger(threshold = argv$verbose)
 
 if (argv$dir == "") {
@@ -79,14 +78,15 @@ ReturnGEP <- function(dataset) {
     cibersort_results_dir,
     glue("CIBERSORTxGEP_{dataset}_SM_GEPs_Filtered.txt")
   )
-  gep <- read_tsv(fname, col_types = cols())
+  gep <- readr::read_tsv(fname, col_types = readr::cols())
   return(gep)
 }
 
-ht_opt$message = FALSE
+ht_opt$message <- FALSE
 
 for (set in datasets) {
   do_heatmap <- TRUE
+  # Probably not the most efficent
   tryCatch(ReturnGEP(set),
     error = function(e) {
       info(logger, glue("Output for {set} not found"))
