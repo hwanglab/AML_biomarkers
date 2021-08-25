@@ -13,12 +13,14 @@ parser = argparse.ArgumentParser(description = "Deconvolute Samples")
 parser.add_argument("--dir", "-d", help="path to run directory", default=None)
 parser.add_argument("--id", "-i", help="ID to use for outputs", required=True)
 parser.add_argument("--cores", "-c", help="number of cores to use", default=1)
-parser.add_argument("--verbose", "-v", help="verbose level to use [1 (DEBUG) - 5 (CRITICAL)]", default=2, type=int)
+parser.add_argument("--verbose", "-v", help="should debug messages be printed", action="count", default=0)
 parser.add_argument("--debug-cibersort", "-D", help="Should the max amount of information from CIBERSORT be printed?", action="store_true")
 
 argv = parser.parse_args()
 
-logging.basicConfig(level=vars(argv).get("verbose"), format="%(levelname)s [%(asctime)s] [%(name)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+verbose_level = 2 - argv.verbose
+logging.basicConfig(level=verbose_level, format="%(levelname)s [%(asctime)s] %(name)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+
 logger = logging.getLogger("CIBERSORTx: Reference")
 
 docker_singularity_cmd = "docker"

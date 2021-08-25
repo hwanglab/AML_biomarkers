@@ -9,19 +9,26 @@ import lib
 import uuid
 from datetime import datetime
 
-parser = argparse.ArgumentParser(description = "Group Mode GEP Purification")
+parser = argparse.ArgumentParser(description = "Group Mode GEP Purification", add_help = False)
 
-parser.add_argument("--dir", "-d", help="path to run directory", default=None)
-parser.add_argument("--id", "-i", help="ID to use for outputs", required=True)
-parser.add_argument("--verbose", "-v", help="verbose level to use [1 (DEBUG) - 5 (CRITICAL)]", default=2, type=int)
-parser.add_argument("--mixture", "-m", help="what mixture file to use", required=True, nargs="+")
-parser.add_argument("--batch-correct-B", "-X", help="Should B mode batch correction be applied?", action="store_true")
-parser.add_argument("--batch-correct-S", "-S", help="Should S mode batch correction be applied?", action="store_true")
-parser.add_argument("--debug-cibersort", "-D", help="Should stdout be printed from CIBERSORTx", action="store_true")
+runtime = parser.add_argument_group("Runtime Arguments")
+runtime.add_argument("-d", "--dir", help="path to run directory", default=None)
+runtime.add_argument("-i", "--id", help="ID to use for outputs", required=True)
+runtime.add_argument("-m", "--mixture", help="what mixture file to use", required=True, nargs="+")
+
+flags = parser.add_argument_group("optional argumuments")
+flags.add_argument("-h", "--help", help = "show this help message and exit", action = "help")
+flags.add_argument("-v", "--verbose", help="should debug messages be printed", action="count", default=0)
+flags.add_argument("-D", "--debug", help="Should stdout be printed from CIBERSORTx", action="store_true")
+
+group = flags.add_mutually_exclusive_group()
+group.add_argument("-X", "--B-mode", help="Should B mode batch correction be applied?", action="store_true")
+group.add_argument("-S", "--S-mode", help="Should S mode batch correction be applied?", action="store_true")
 
 argv = parser.parse_args()
 
-logging.basicConfig(level=argv.verbose, format="%(levelname)s [%(asctime)s] %(name)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+verbose_level = 2 - argv.verbose
+logging.basicConfig(level=verbose_level, format="%(levelname)s [%(asctime)s] %(name)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 
 if (len(argv.mixture) == 1):
     name_to_use = argv.mixture[0]
@@ -121,17 +128,19 @@ else:
 
 logger.info("Collecting Previous CIBERSORTx Results")
 
-if argv.batch_correct_B:
+if argv.B_mode:
     bc_filename = "Adjusted"
 else:
     bc_filename = "Results"
 
-bc_boolean = str(argv.batch_correct_B).upper()
+bcb_boolean = str(argv.B_mode).upper()
+bcs_boolean = str(argv.S_mode).upper()
 
 def run_cmd(mixture):
-    specific_args = ["--sigmatrix", ref_filename, "--mixture", mixture, "--label", mixture, "--rmbatchBmode", bc_boolean]
+    specific_args = ["--sigmatrix", ref_filename, "--mixture", mixture, "--label", mixture]
+    bc_args = bc_args = ["--rmbatchBmode", bcb_boolean, "--rmbatchSmode", bcs_boolean, "--refsample", "cibersort_ref_input.txt"]
     cib_results = "CIBERSORTx_{}_{}.txt".format(mixture, bc_filename)
-    gep_args = ["--cibresults", cib_results, "--useadjustedmixtures", bc_boolean]
+    gep_args = ["--cibresults", cib_results]
     res = [container_cmd, cibersort_cmd, specific_args, gep_args]
     flattened = [val for sublist in res for val in sublist]
     return flattened
@@ -145,7 +154,7 @@ for dat in argv.mixture:
     destination_path = "{}/CIBERSORTx_{}_{}.txt".format(output_path + name_of_output_directory, dat, bc_filename)
     shutil.copyfile(source_path, destination_path)
 
-    if argv.batch_correct_B:
+    if argv.B_mode or argv.S_mode:
         source_path = "{}/cibersort_results/CIBERSORTx_{}_Adjusted.txt".format(output_path, dat)
         destination_path = "{}/CIBERSORTx_{}_Adjusted.txt".format(output_path + name_of_output_directory, dat)
         shutil.copyfile(source_path, destination_path)

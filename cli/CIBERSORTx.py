@@ -10,20 +10,25 @@ import uuid
 from datetime import datetime
 import lib
 
-parser = argparse.ArgumentParser(description = "Deconvolute Samples")
+parser = argparse.ArgumentParser(description = "Deconvolute Samples", add_help=False)
 
-parser.add_argument("--dir", "-d", help="path to run directory", default=None)
-parser.add_argument("--id", "-i", help="ID to use for outputs", required=True)
-parser.add_argument("--verbose", "-v", help="verbose level to use [1 (DEBUG) - 5 (CRITICAL)]", default=2, type=int)
-parser.add_argument("--mixture", "-m", help="what mixture file to use", required=True, nargs="+")
-parser.add_argument("--batch-correct-B","-X", help="Should B mode batch correction be applied?", action="store_true")
-parser.add_argument("--batch-correct-S", "-S", help="Should S mode batch correction be applied?", action="store_true")
+runtime = parser.add_argument_group("Runtime Arguments")
+runtime.add_argument("-d", "--dir", help="path to run directory", default=None)
+runtime.add_argument("-i", "--id", help="ID to use for outputs", required=True)
+runtime.add_argument("-m", "--mixture", help="what mixture file to use", required=True, nargs="+")
 
-parser.add_argument("--debug-cibersort", "-D", help="Should the max amount of information from CIBERSORT be printed?", action="store_true")
+flags = parser.add_argument_group("optional argumuments")
+flags.add_argument("-h", "--help", help = "show this help message and exit", action = "help")
+flags.add_argument("-v", "--verbose", help="should debug messages be printed", action="count", default=0)
+flags.add_argument("-D", "--debug", help="Should stdout be printed from CIBERSORTx", action="store_true")
+
+group = flags.add_mutually_exclusive_group()
+group.add_argument("-X", "--B-mode", help="Should B mode batch correction be applied?", action="store_true")
+group.add_argument("-S", "--S-mode", help="Should S mode batch correction be applied?", action="store_true")
 
 argv = parser.parse_args()
-
-logging.basicConfig(level=argv.verbose, format="%(levelname)s [%(asctime)s] %(name)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+verbose_level = 2 - argv.verbose
+logging.basicConfig(level=verbose_level, format="%(levelname)s [%(asctime)s] %(name)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 
 if (len(argv.mixture) == 1):
     name_to_use = argv.mixture[0]
@@ -31,10 +36,6 @@ else:
     name_to_use = lib.concatenate_list_data(argv.mixture)
 
 logger = logging.getLogger("CIBERSORTx: [{}]".format(name_to_use))
-
-if argv.batch_correct_B & argv.batch_correct_S:
-    logger.fatal("Cannot supply both B and S mode batch correction")
-    quit()
 
 docker_singularity_cmd = "docker"
 try: 
@@ -73,7 +74,7 @@ name_of_output_directory = "{}/{}".format(cibersort_output, random_string)
 logger.debug("Output Directory: {}".format(name_of_output_directory))
 
 try:
-    os.mkdir(output_path + "/cibersort_results")
+    os.mkdir("{}/{}".format(output_path, cibersort_output))
 except FileExistsError as e:
     logger.debug("Output directory already created")
 
@@ -111,7 +112,7 @@ else:
 logger.debug("Testing if Reference can be found")
 
 ref_filename = "CIBERSORTx_cell_type_sourceGEP.txt"
-cibersort_cmd = ["--username", user_email, "--verbose", str(argv.debug_cibersort).upper(), "--token", user_token, " --single_cell", "TRUE", "--outdir", "{}/{}".format(output_path, name_of_output_directory)]
+cibersort_cmd = ["--username", user_email, "--verbose", str(argv.debug).upper(), "--token", user_token, " --single_cell", "TRUE", "--outdir", "{}/{}".format(output_path, name_of_output_directory)]
 
 if os.path.isfile("{}/{}".format(output_path, ref_filename)):
     logger.info("Existing Reference Found")
@@ -127,7 +128,7 @@ else:
     
 def run_cmd(mixture):
     specific_args = ["--sigmatrix", ref_filename, "--mixture", mixture, "--label", mixture]
-    bc_args = ["--rmbatchBmode", str(argv.batch_correct_B).upper(), "--rmbatchSmode", str(argv.batch_correct_S).upper(), "--refsample", "cibersort_ref_input.txt"]
+    bc_args = ["--rmbatchBmode", str(argv.B_mode).upper(), "--rmbatchSmode", str(argv.S_mode).upper(), "--refsample", "cibersort_ref_input.txt"]
     res = [container_cmd, cibersort_cmd, specific_args, bc_args]
     flattened = [val for sublist in res for val in sublist]
     return flattened
@@ -138,7 +139,7 @@ for dat in argv.mixture:
     destination_path = "{}/{}".format(output_path, dat)
     shutil.copyfile(source_path, destination_path)
     logger.debug("The run command is: {}".format(" ".join(run_cmd(dat))))
-    if argv.debug_cibersort:
+    if argv.debug:
         subprocess_fun = None
     else:
         subprocess_fun = subprocess.DEVNULL
@@ -148,7 +149,7 @@ for dat in argv.mixture:
     elapsed_time = end_time - start_time
     logger.info("CIBERSORTx completed in {}".format(elapsed_time))
 
-files = os.listdir("{}/cibersort_results/{}".format(output_path, random_string))
+files = os.listdir("{}/{}}/{}".format(output_path, name_of_output_directory, random_string))
 
 remove = True
 for f in files:
