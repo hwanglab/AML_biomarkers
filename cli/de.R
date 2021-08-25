@@ -41,6 +41,19 @@ parser$add_argument(
   default = 0.05,
   metavar = "P"
 )
+group <- parser$add_mutually_exclusive_group()
+group$add_argument(
+  "--B-mode",
+  "-X",
+  help = "Should B mode batch correction be applied?",
+  action = "store_true"
+)
+group$add_argument(
+  "--S-mode",
+  "-S",
+  help = "Should S mode batch correction be applied?",
+  action = "store_true"
+)
 
 argv <- parser$parse_args()
 
@@ -155,9 +168,73 @@ DoHeatmap(seurat, group.by = "clusters")
 graphics.off()
 
 if (!file.exists(here(output_path, "cluster_differential_expression.tsv"))) {
-  info(loggger, "Doing differential Expression")
+  info(logger, "Doing differential Expression")
   markers <- FindAllMarkers(seurat, test.use = "MAST")
   write_tsv(markers, file = here(output_path, "cluster_differential_expression.tsv"))
+}
+
+ReturnGEP <- function(dataset) {
+  fname <- here(
+    output_path,
+    cibersort_results_dir,
+    glue("CIBERSORTxGEP_{dataset}_SM_GEPs_Filtered.txt")
+  )
+  gep <- readr::read_tsv(fname, col_types = readr::cols())
+  return(gep)
+}
+
+datasets <- c("target_data.txt", "tcga_data.txt", "beat_aml.txt")
+
+if (argv$B_mode) {
+  cibersort_results_dir <- "cibersort_results_B"
+} else {
+  if (argv$S_mode) {
+    cibersort_results_dir <- "cibersort_results_S"
+  } else {
+    cibersort_results_dir <- "cibersort_results"
+  }
+}
+
+gene_names_for_de <- list(0)
+for (set in datasets) {
+  do_heatmap <- TRUE
+  # Probably not the most efficent
+  tryCatch(ReturnGEP(set),
+    error = function(e) {
+      info(logger, glue("Output for {set} not found"))
+      do_heatmap <<- FALSE
+    }
+  )
+  if (do_heatmap) {
+    gep <- ReturnGEP(set)
+    gep <- column_to_rownames(gep, var = "GeneSymbol")
+    gep[is.na(gep)] <- 0
+    gep_sd <- apply(gep, 1, sd)
+    q3 <- quantile(gep_sd)[[4]]
+    gep_bar <- mean(gep_sd)
+
+    gep_filter <- gep[!(gep_sd <= gep_bar), ]
+    gene_names_for_de[[set]] <- pull(gep_filter, GeneSymbol)
+  }
+}
+gene_names_for_de <- unique(unlist(gene_names_for_de))
+
+if (!is_empty(gene_names_for_de)) {
+  pdf(here(plots_path, "feature_heatmap_CIBERSORTxGEP_filtered.pdf"), width = 18)
+  DoHeatmap(seurat, group.by = "clusters", features = gene_names_for_de)
+  graphics.off()
+}
+
+markers <- read_tsv(file = here(output_path, "cluster_differential_expression.tsv"))
+genes <- markers %>%
+  group_by(cluster) %>%
+  slice_min(p_val_adj, n = 50) %>%
+  pull(gene)
+
+if (!is_empty(genes)) {
+  pdf(here(plots_path, "feature_heatmap_DE_genes.pdf"), width = 18)
+  DoHeatmap(seurat, group.by = "clusters", features = genes)
+  graphics.off()
 }
 
 if (!is.na(argv$clusters)) {
