@@ -223,10 +223,10 @@ print(bar_plot3)
 print(bar_plot4)
 graphics.off()
 
-info(logger, "Printing single-cell Heatmap")
-pdf(here(plots_path, "feature_heatmap.pdf"), width = 18)
-print(DoHeatmap(seurat, group.by = "clusters"))
-graphics.off()
+# info(logger, "Printing single-cell Heatmap")
+# pdf(here(plots_path, "feature_heatmap.pdf"), width = 18)
+# print(DoHeatmap(seurat, group.by = "clusters"))
+# graphics.off()
 
 if (!file.exists(here(output_path, "cluster_differential_expression.tsv"))) {
   info(logger, "Doing Differential Expression")
@@ -238,7 +238,8 @@ if (!file.exists(here(output_path, "cluster_differential_expression.tsv"))) {
 } else {
   info(logger, "Differential Expression already done")
   markers <- read_tsv(
-    file = here(output_path, "cluster_differential_expression.tsv")
+    file = here(output_path, "cluster_differential_expression.tsv"),
+    col_types = cols()
   )
 }
 
@@ -270,12 +271,11 @@ for (set in datasets) {
   # Probably not the most efficent
   tryCatch(ReturnGEP(set),
     error = function(e) {
-      info(logger, glue("Output for {set} not found"))
+      warn(logger, glue("CIBERSORTxGEP output for {set} not found"))
       do_heatmap <<- FALSE
     }
   )
   if (do_heatmap) {
-    info(logger, "Printing CIBERSORTxGEP filtered single-cell Heatmap")
     gep <- ReturnGEP(set)
     gep <- column_to_rownames(gep, var = "GeneSymbol")
     gep[is.na(gep)] <- 0
@@ -291,7 +291,10 @@ gene_names_for_de <- unique(unlist(gene_names_for_de))
 
 if (!is_empty(gene_names_for_de)) {
   info(logger, "Scaling Genes from CIBERSORTxGEP")
+  debug(logger, glue("Getting Pearson Residuals for {length(gene_names_for_de)} genes"))
   seurat <- GetResidual(seurat, gene_names_for_de, verbose = FALSE)
+  
+  debug(logger, "Creating Heatmap")
   pdf(
     here(plots_path, "feature_heatmap_CIBERSORTxGEP_filtered.pdf"),
     width = 18
