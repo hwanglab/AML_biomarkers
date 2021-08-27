@@ -111,9 +111,9 @@ if (argv$cores == 1) {
 
 info(logger, "Printing Plots")
 WilcoxTestPossibly <- purrr::possibly(
-  wilcox.test, 
+  wilcox.test,
   otherwise = list(p.value = NA)
-  )
+)
 
 FindClusterFreq <- function(object, metadata, cluster, sort_by = NULL, .debug = FALSE) {
   # quote expressions
@@ -149,7 +149,8 @@ freq_stat <- freq %>%
     pval = WilcoxTestPossibly(
       x = freq,
       y = as.numeric(as.factor(prognosis))
-    )$p.value, .groups = "keep"
+    )$p.value,
+    .groups = "keep"
   )
 
 wilcox_clusters <- freq_stat %>%
@@ -169,11 +170,14 @@ DimPlot(seurat, reduction = "umap", split.by = "prognosis")
 graphics.off()
 
 info(logger, "Printing Cluster Bar Plots")
-bar_plot <- ggplot(data = freq, mapping = aes(x = patient_id, y = freq, fill = prognosis)) +
+bar_plot <- ggplot(
+  data = freq,
+  mapping = aes(x = patient_id, y = freq, fill = prognosis)
+) +
   geom_col() +
   theme_classic() +
   scale_fill_viridis_d() +
-  facet_wrap(~ clusters) +
+  facet_wrap(~clusters) +
   scale_x_discrete(labels = NULL, breaks = NULL)
 
 bar_plot2 <- freq %>%
@@ -182,22 +186,41 @@ bar_plot2 <- freq %>%
   geom_col() +
   theme_classic() +
   scale_fill_viridis_d() +
-  facet_wrap(~ clusters) +
+  facet_wrap(~clusters) +
   scale_x_discrete(labels = NULL, breaks = NULL)
 
-bar_plot3 <- freq %>%
+freq2 <- freq %>%
+  group_by(clusters, prognosis) %>%
+  summarise(x_bar = mean(freq, na.rm = TRUE), sd = sd(freq))
+
+bar_plot3 <- freq2 %>%
   filter(clusters %in% wilcox_clusters) %>%
-  ggplot(mapping = aes(x = prognosis, y = freq, fill = prognosis)) +
+  ggplot(mapping = aes(x = prognosis, y = x_bar, fill = prognosis)) +
   geom_col() +
   theme_classic() +
   scale_fill_viridis_d() +
-  facet_wrap(~ clusters) +
+  facet_wrap(~clusters) +
   scale_x_discrete(labels = NULL, breaks = NULL)
+
+bar_plot4 <- freq2 %>%
+  filter(clusters %in% wilcox_clusters) %>%
+  ggplot(mapping = aes(x = prognosis, y = x_bar, fill = prognosis)) +
+  geom_col() +
+  theme_classic() +
+  scale_fill_viridis_d() +
+  facet_wrap(~clusters) +
+  scale_x_discrete(labels = NULL, breaks = NULL) +
+  geom_errorbar(
+    mapping = aes(ymin = x_bar - sd, ymax = x_bar + sd),
+    width = 0.2,
+    position = position_dodge(0.9)
+  )
 
 pdf(here(plots_path, "cluster_bar_plot.pdf"))
 print(bar_plot)
 print(bar_plot2)
 print(bar_plot3)
+print(bar_plot4)
 graphics.off()
 
 info(logger, "Printing single-cell Heatmap")
@@ -209,12 +232,13 @@ if (!file.exists(here(output_path, "cluster_differential_expression.tsv"))) {
   info(logger, "Doing Differential Expression")
   markers <- FindAllMarkers(seurat, test.use = "MAST")
   write_tsv(
-    markers, file = here(output_path, "cluster_differential_expression.tsv")
-    )
+    markers,
+    file = here(output_path, "cluster_differential_expression.tsv")
+  )
 } else {
   info(logger, "Differential Expression already done")
   markers <- read_tsv(
-  file = here(output_path, "cluster_differential_expression.tsv")
+    file = here(output_path, "cluster_differential_expression.tsv")
   )
 }
 
@@ -269,8 +293,9 @@ if (!is_empty(gene_names_for_de)) {
   info(logger, "Scaling Genes from CIBERSORTxGEP")
   seurat <- GetResidual(seurat, gene_names_for_de, verbose = FALSE)
   pdf(
-    here(plots_path, "feature_heatmap_CIBERSORTxGEP_filtered.pdf"), width = 18
-    )
+    here(plots_path, "feature_heatmap_CIBERSORTxGEP_filtered.pdf"),
+    width = 18
+  )
   print(DoHeatmap(seurat, group.by = "clusters", features = gene_names_for_de))
   graphics.off()
 }
