@@ -151,12 +151,12 @@ for dat in argv.mixture:
     logger.debug("Moving Old Results")
 
     source_path = "{}/cibersort_results/CIBERSORTx_{}_{}.txt".format(output_path, dat, bc_filename)
-    destination_path = "{}/CIBERSORTx_{}_{}.txt".format(output_path + name_of_output_directory, dat, bc_filename)
+    destination_path = "{}/{}/CIBERSORTx_{}_{}.txt".format(output_path, name_of_output_directory, dat, bc_filename)
     shutil.copyfile(source_path, destination_path)
 
     if argv.B_mode or argv.S_mode:
         source_path = "{}/cibersort_results/CIBERSORTx_{}_Adjusted.txt".format(output_path, dat)
-        destination_path = "{}/CIBERSORTx_{}_Adjusted.txt".format(output_path + name_of_output_directory, dat)
+        destination_path = "{}/{}/CIBERSORTx_{}_Adjusted.txt".format(output_path, name_of_output_directory, dat)
         shutil.copyfile(source_path, destination_path)
 
     logger.debug("Moving Data")
@@ -165,7 +165,7 @@ for dat in argv.mixture:
     shutil.copyfile(source_path, destination_path)
 
     logger.debug("The run command is: {}".format(" ".join(run_cmd(dat))))
-    if argv.debug_cibersort:
+    if argv.debug:
         subprocess_fun = None
     else:
         subprocess_fun = subprocess.DEVNULL
@@ -184,6 +184,9 @@ for f in files:
     try: 
         shutil.copyfile(source_path, destination_path)
     except IsADirectoryError as e:
+        logger.error("Error moving files. Temporary Directory will not be deleted!")
+        remove = False
+    except FileNotFoundError as e:
         logger.error("Error moving files. Temporary Directory will not be deleted!")
         remove = False
 
