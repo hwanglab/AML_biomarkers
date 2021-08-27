@@ -200,7 +200,6 @@ print(bar_plot2)
 print(bar_plot3)
 graphics.off()
 
-quit()
 info(logger, "Printing single-cell Heatmap")
 pdf(here(plots_path, "feature_heatmap.pdf"), width = 18)
 print(DoHeatmap(seurat, group.by = "clusters"))
