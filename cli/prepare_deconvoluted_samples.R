@@ -1,51 +1,47 @@
 #!/usr/bin/env Rscript
 source("renv/activate.R")
-library(argparser)
+library(argparse)
 
 # parse args
-parser <- arg_parser("Prepare Clinical Data")
-parser <- add_argument(
-  parser, "--dir",
-  short = "-d",
+parser <- ArgumentParser("Prepare Clinical Data")
+group <- parser$add_mutally_exclusive_group()
+parser$add_argument(
+  "--dir",
+  "-d",
   help = "path to run directory",
   default = ""
 )
-parser <- add_argument(
-  parser,
+parser$add_argument(
   "--id",
-  short = "-i",
+  "-i",
   help = "ID to use for outputs"
 )
-parser <- add_argument(
-  parser,
-  "--cores",
-  short = "-c",
-  help = "number of cores to use",
-  default = 1
-)
-parser <- add_argument(
-  parser,
+parser$add_argument(
   "--verbose",
-  short = "-v",
+  "-v",
   help = "should messages be printed? One of: DEBUG, INFO, WARN, ERROR",
   default = "INFO"
 )
-parser <- add_argument(
-  parser,
+parser$add_argument(
   "--model",
-  short = "-m",
+  "-m",
   help = "which model should be used?",
   default = "CIBERSORTx"
 )
-parser <- add_argument(
-  parser,
-  "--batch-corrected",
-  short = "-B",
+group$add_argument(
+  "--B-mode",
+  "-X",
   help = "was batch correction done using CIBERSORTx?",
-  flag = TRUE
+  action = "store_true"
+)
+group$add_argument(
+  "--S-mode",
+  "-S",
+  help = "was batch correction done using CIBERSORTx?",
+  action = "store_true"
 )
 
-argv <- parse_args(parser)
+argv <- parser$parse_args()
 
 # load more libraries
 suppressPackageStartupMessages({
@@ -70,37 +66,48 @@ logger <- logger(threshold = argv$verbose)
 if (argv$model == "CIBERSORTx") {
   info(logger, "Preparing Data from CIBERSORTx")
   data_filename <- c("tcga_data.txt", "target_data.txt", "beat_aml.txt")
-  bc_filename <- if_else(argv$batch_corrected, "_Adjusted.txt", "_Results.txt")
+  bc_filename <- if_else(
+    argv$B_mode || argv$S_mode,
+    "_Adjusted.txt",
+    "_Results.txt"
+  )
   data_filename <- paste0("CIBERSORTx_", data_filename, bc_filename)
-  
-  data_path <- paste0(output_path, "/cibersort_results/", data_filename)
+
+  if (argv$B_mode) {
+    cibersort_results_dir <- "cibersort_results_B"
+  } else if (argv$S_mode) {
+    cibersort_results_dir <- "cibersort_results_S"
+  } else {
+    cibersort_results_dir <- "cibersort_results"
+  }
+
+  data_path <- paste0(output_path, "/", cibersort_results_dir, "/", data_filename)
   debug(logger, paste0("Example Path: ", data_path[[1]]))
 
   deconvoluted <- data_path %>%
     map(read_tsv, col_types = cols()) %>%
     map(~ select(.x, -`P-value`, -Correlation, -RMSE))
-  
+
   target_deconvoluted <- deconvoluted[[2]]
   tcga_deconvoluted <- deconvoluted[[1]]
   beat_aml_decon <- deconvoluted[[3]]
-
 } else {
   info(logger, "Preparing Data from granulator")
   data_filename <- list.files(
-  path = here(output_path, "cache"),
-  full.names = TRUE,
-  pattern = "^deconvoluted_samples_"
-)
+    path = here(output_path, "cache"),
+    full.names = TRUE,
+    pattern = "^deconvoluted_samples_"
+  )
 
-if (length(data_filename) > 1) fatal("There is more than one cached object")
+  if (length(data_filename) > 1) fatal("There is more than one cached object")
 
-debug(logger, paste0("Importing Data from: ", data_filename))
-deconvoluted_samples <- readRDS(data_filename)
+  debug(logger, paste0("Importing Data from: ", data_filename))
+  deconvoluted_samples <- readRDS(data_filename)
 
-model_use <- argv$model
-target_deconvoluted <- deconvoluted_samples$TARGET$proportions[[model_use]]
-tcga_deconvoluted <- deconvoluted_samples$TCGA$proportions[[model_use]]
-beat_aml_decon <- deconvoluted_samples$BeatAML$proportions[[model_use]]
+  model_use <- argv$model
+  target_deconvoluted <- deconvoluted_samples$TARGET$proportions[[model_use]]
+  tcga_deconvoluted <- deconvoluted_samples$TCGA$proportions[[model_use]]
+  beat_aml_decon <- deconvoluted_samples$BeatAML$proportions[[model_use]]
 }
 
 info(logger, "Preparing Clinical Information")
@@ -109,14 +116,14 @@ source("cli/lib/prepare_clin_info.R")
 debug(logger, "Done sourcing clinical information tables.")
 debug(logger, "Joining TARGET clinical data and deconvolution results")
 target_deconvoluted <- target_deconvoluted %>%
-  #as_tibble(rownames = "patient_USI") %>%
+  # as_tibble(rownames = "patient_USI") %>%
   separate(Mixture, into = c(NA, NA, "USI", NA, NA), sep = "-") %>%
   left_join(clinical) %>%
   mutate(across(where(is_character), str_to_lower))
 
 debug(logger, "Joining TCGA clinical data and deconvolution results")
 tcga_deconvoluted <- tcga_deconvoluted %>%
-  #as_tibble(rownames = "case_submitter_id") %>%
+  # as_tibble(rownames = "case_submitter_id") %>%
   left_join(tcga_ann2, by = c("Mixture" = "Case ID")) %>%
   filter(flt3_status == "Positive")
 
