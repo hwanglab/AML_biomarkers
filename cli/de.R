@@ -289,7 +289,7 @@ for (set in datasets) {
 }
 gene_names_for_de <- unique(unlist(gene_names_for_de))
 
-if (!is_empty(gene_names_for_de)) {
+if (length(gene_names_for_de) >= 5) {
   info(logger, "Scaling Genes from CIBERSORTxGEP")
   debug(logger, glue("Getting Pearson Residuals for {length(gene_names_for_de)} genes"))
   seurat <- GetResidual(seurat, gene_names_for_de, verbose = FALSE)
