@@ -44,11 +44,12 @@ except FileNotFoundError as e:
     logger.info("Docker not Found. Falling back to Singularity")
     docker_singularity_cmd = "singularity"
 
-try: 
-    subprocess.run("singularity", stderr=subprocess.DEVNULL)
-except FileNotFoundError as e:
-    logger.critical("Singularity Not Found")
-    raise RuntimeError("Docker or Singularity cannot be located")
+if docker_singularity_cmd == "singularity":
+    try: 
+        subprocess.run("singularity", stderr=subprocess.DEVNULL)
+    except FileNotFoundError as e:
+        logger.critical("Singularity Not Found")
+        raise RuntimeError("Docker or Singularity cannot be located")
 
 if docker_singularity_cmd == "singularity":
     use_singularity = True
@@ -123,7 +124,7 @@ elif os.path.isfile("{}/cibersort_results/{}".format(output_path, ref_filename))
     destination_path = "{}/{}".format(output_path, ref_filename)
     shutil.copyfile(source_path, destination_path)
 else:
-    logger.info("Reference Not Found. Please run CIBERSORTx_ref.py")
+    logger.critical("Reference Not Found. Please run CIBERSORTx_ref.py")
     raise RuntimeError("Reference Not Found")
     
 def run_cmd(mixture):
@@ -149,7 +150,7 @@ for dat in argv.mixture:
     elapsed_time = end_time - start_time
     logger.info("CIBERSORTx completed in {}".format(elapsed_time))
 
-files = os.listdir("{}/{}}/{}".format(output_path, name_of_output_directory, random_string))
+files = os.listdir("{}/{}/{}".format(output_path, name_of_output_directory, random_string))
 
 remove = True
 for f in files:
