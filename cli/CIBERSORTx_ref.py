@@ -7,6 +7,7 @@ import shutil
 import logging
 import sys
 import binascii
+import lib
 
 parser = argparse.ArgumentParser(description = "Deconvolute Samples")
 
@@ -14,7 +15,7 @@ parser.add_argument("--dir", "-d", help="path to run directory", default=None)
 parser.add_argument("--id", "-i", help="ID to use for outputs", required=True)
 parser.add_argument("--cores", "-c", help="number of cores to use", default=1)
 parser.add_argument("--verbose", "-v", help="should debug messages be printed", action="count", default=0)
-parser.add_argument("--debug-cibersort", "-D", help="Should the max amount of information from CIBERSORT be printed?", action="store_true")
+parser.add_argument("--debug", "-D", help="Should the max amount of information from CIBERSORT be printed?", action="store_true")
 
 argv = parser.parse_args()
 
@@ -46,12 +47,12 @@ else:
     raise SyntaxError("Only Singularity and Docker are supported")
 
 # set up outputs
-if vars(argv).get("dir") == None:
-    output_path = "outs/" + vars(argv).get("id")
-    plots_path = "plots/" + vars(argv).get("id")
+if argv.dir == None:
+    output_path = "outs/" + argv.id
+    plots_path = "plots/" + argv.id
 else:
-    output_path = vars(argv).get("dir") + "/outs/" + vars(argv).get("id")
-    plots_path = vars(argv).get("dir") + "/plots/" + vars(argv).get("id")
+    output_path = argv.dir + "/outs/" + argv.dir
+    plots_path = argv.dir + "/plots/" + argv.dir
 
 random_string = binascii.b2a_hex(os.urandom(15))
 name_of_output_directory = "cibersort_results"
@@ -105,7 +106,7 @@ else:
     logger.debug("Unnesting commands")
     ref_run_cmd = [val for sublist in ref_run_cmd for val in sublist]
     logger.debug("The run command is: {}".format(" ".join(ref_run_cmd)))
-    if vars(argv).get("debug_cibersort"):
+    if argv.debug:
         subprocess_fun = subprocess.STDOUT
     else:
         subprocess_fun = subprocess.DEVNULL
@@ -115,27 +116,5 @@ else:
     source_path = "{}/cibersort_results/{}".format(output_path, ref_filename)
     destination_path = "{}/{}".format(output_path, ref_filename)
     shutil.copyfile(source_path, destination_path)
-
-def write_invocation(argv, output_path):
-    import time
-    import sys
-    args = vars(argv).items()
-    args = list(args)
-    sys_cmd = sys.argv[0]
-
-    sys_time = time.asctime(time.localtime(time.time()))
-
-    header = "{}: {}------------------".format(sys_cmd, sys_time)
-
-    fname = output_path + "/invocation"
-    file1 = open(fname, "a")  # append mode
-    file1.write(header)
-    file1.write("\n")
-    for arg in args:
-        formatted_args = "{}: {}".format(arg[0], arg[1])
-        file1.write(formatted_args)
-        file1.write("\n")
-    file1.write("\n")
-    file1.close()
  
-write_invocation(argv, output_path)
+lib.write_invocation(argv, output_path)
