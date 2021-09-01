@@ -167,6 +167,7 @@ info(logger, "Printing Dimension Reductions")
 pdf(here(plots_path, "UMAP.pdf"), onefile = TRUE, width = 10)
 DimPlot(seurat, reduction = "umap", group.by = "clusters")
 DimPlot(seurat, reduction = "umap", split.by = "prognosis")
+DimPlot(seurat, reduction = "umap", group.by = "patient_id")
 graphics.off()
 
 info(logger, "Printing Cluster Bar Plots")
@@ -180,53 +181,57 @@ bar_plot <- ggplot(
   facet_wrap(~clusters) +
   scale_x_discrete(labels = NULL, breaks = NULL)
 
-bar_plot2 <- freq %>%
-  filter(clusters %in% wilcox_clusters) %>%
-  ggplot(mapping = aes(x = patient_id, y = freq, fill = prognosis)) +
-  geom_col() +
-  theme_classic() +
-  scale_fill_viridis_d() +
-  facet_wrap(~clusters) +
-  scale_x_discrete(labels = NULL, breaks = NULL)
+if (!is_empty(wilcox_clusters)) {
+  bar_plot2 <- freq %>%
+    filter(clusters %in% wilcox_clusters) %>%
+    ggplot(mapping = aes(x = patient_id, y = freq, fill = prognosis)) +
+    geom_col() +
+    theme_classic() +
+    scale_fill_viridis_d() +
+    facet_wrap(~clusters) +
+    scale_x_discrete(labels = NULL, breaks = NULL)
 
-freq2 <- freq %>%
-  group_by(clusters, prognosis) %>%
-  summarise(x_bar = mean(freq, na.rm = TRUE), sd = sd(freq))
+  freq2 <- freq %>%
+    group_by(clusters, prognosis) %>%
+    summarise(x_bar = mean(freq, na.rm = TRUE), sd = sd(freq))
 
-bar_plot3 <- freq2 %>%
-  filter(clusters %in% wilcox_clusters) %>%
-  ggplot(mapping = aes(x = prognosis, y = x_bar, fill = prognosis)) +
-  geom_col() +
-  theme_classic() +
-  scale_fill_viridis_d() +
-  facet_wrap(~clusters) +
-  scale_x_discrete(labels = NULL, breaks = NULL)
+  bar_plot3 <- freq2 %>%
+    filter(clusters %in% wilcox_clusters) %>%
+    ggplot(mapping = aes(x = prognosis, y = x_bar, fill = prognosis)) +
+    geom_col() +
+    theme_classic() +
+    scale_fill_viridis_d() +
+    facet_wrap(~clusters) +
+    scale_x_discrete(labels = NULL, breaks = NULL)
 
-bar_plot4 <- freq2 %>%
-  filter(clusters %in% wilcox_clusters) %>%
-  ggplot(mapping = aes(x = prognosis, y = x_bar, fill = prognosis)) +
-  geom_col() +
-  theme_classic() +
-  scale_fill_viridis_d() +
-  facet_wrap(~clusters) +
-  scale_x_discrete(labels = NULL, breaks = NULL) +
-  geom_errorbar(
-    mapping = aes(ymin = x_bar - sd, ymax = x_bar + sd),
-    width = 0.2,
-    position = position_dodge(0.9)
-  )
+  bar_plot4 <- freq2 %>%
+    filter(clusters %in% wilcox_clusters) %>%
+    ggplot(mapping = aes(x = prognosis, y = x_bar, fill = prognosis)) +
+    geom_col() +
+    theme_classic() +
+    scale_fill_viridis_d() +
+    facet_wrap(~clusters) +
+    scale_x_discrete(labels = NULL, breaks = NULL) +
+    geom_errorbar(
+      mapping = aes(ymin = x_bar - sd, ymax = x_bar + sd),
+      width = 0.2,
+      position = position_dodge(0.9)
+    )
+}
 
 pdf(here(plots_path, "cluster_bar_plot.pdf"))
 print(bar_plot)
-print(bar_plot2)
-print(bar_plot3)
-print(bar_plot4)
+if (!is_empty(wilcox_clusters)) {
+  print(bar_plot2)
+  print(bar_plot3)
+  print(bar_plot4)
+}
 graphics.off()
 
-# info(logger, "Printing single-cell Heatmap")
-# pdf(here(plots_path, "feature_heatmap.pdf"), width = 18)
-# print(DoHeatmap(seurat, group.by = "clusters"))
-# graphics.off()
+info(logger, "Printing single-cell Heatmap")
+pdf(here(plots_path, "feature_heatmap.pdf"), width = 18)
+print(DoHeatmap(seurat, group.by = "clusters"))
+graphics.off()
 
 if (!file.exists(here(output_path, "cluster_differential_expression.tsv"))) {
   info(logger, "Doing Differential Expression")
@@ -293,7 +298,7 @@ if (length(gene_names_for_de) >= 5) {
   info(logger, "Scaling Genes from CIBERSORTxGEP")
   debug(logger, glue("Getting Pearson Residuals for {length(gene_names_for_de)} genes"))
   seurat <- GetResidual(seurat, gene_names_for_de, verbose = FALSE)
-  
+
   debug(logger, "Creating Heatmap")
   pdf(
     here(plots_path, "feature_heatmap_CIBERSORTxGEP_filtered.pdf"),
@@ -303,10 +308,14 @@ if (length(gene_names_for_de) >= 5) {
   graphics.off()
 }
 
-genes <- markers %>%
-  group_by(cluster) %>%
-  slice_min(p_val_adj, n = 50) %>%
-  pull(gene)
+if (!is_empty(markers)) {
+  genes <- markers %>%
+    group_by(cluster) %>%
+    slice_min(p_val_adj, n = 50) %>%
+    pull(gene)
+} else {
+  genes <- list()
+}
 
 if (!is_empty(genes)) {
   info(logger, "Scaling Genes from DE")
