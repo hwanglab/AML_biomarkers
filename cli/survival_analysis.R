@@ -1,85 +1,75 @@
 #!/usr/bin/env Rscript
 source("renv/activate.R")
-library(argparser)
+library(argparse)
 
 # parse args
-parser <- arg_parser("Do Survival Analysis")
-parser <- add_argument(
-  parser, "--dir",
-  short = "-d",
+parser <- ArgumentParser("Do Survival Analysis")
+parser$add_argument(
+  "--dir",
+  "-d",
   help = "path to run directory",
   default = ""
 )
-parser <- add_argument(
-  parser,
+parser$add_argument(
   "--id",
-  short = "-i",
+  "-i",
   help = "ID to use for outputs"
 )
-parser <- add_argument(
-  parser,
+parser$add_argument(
   "--test-id",
-  short = "-I",
+  "-I",
   help = "ID to use for outputs. Must be unique.",
   default = "incremental"
 )
-parser <- add_argument(
-  parser,
+parser$add_argument(
   "--verbose",
-  short = "-v",
+  "-v",
   help = "should messages be printed? One of: DEBUG, INFO, WARN, ERROR",
   default = "INFO"
 )
-parser <- add_argument(
-  parser,
+parser$add_argument(
   "--sig-clusters",
-  short = "-s",
+  "-s",
   help = "should significant clusters be filtered on?",
-  flag = TRUE
+  action = "store_true"
 )
-parser <- add_argument(
-  parser,
+parser$add_argument(
   "--split",
-  short = "-S",
+  "-S",
   help = "should a saved file be read in to split patients?",
-  flag = TRUE
+  action = "store_true"
 )
-parser <- add_argument(
-  parser,
+parser$add_argument(
   "--training-data",
-  short = "-t",
+  "-t",
   help = "what should be used to train on? (FLT3, CEBPA, NEG, BeatAML, TCGA)",
   default = "FLT3"
 )
-parser <- add_argument(
-  parser,
+parser$add_argument(
   "--training-split",
-  short = "-T",
+  "-T",
   help = "should the training data be split? 0 = no split",
   default = 0.7
 )
-parser <- add_argument(
-  parser,
+parser$add_argument(
   "--training-axis",
-  short = "-a",
+  "-a",
   help = "What time axis to use for training",
   default = "Event Free Survival Time in Days"
 )
-parser <- add_argument(
-  parser,
+parser$add_argument(
   "--training-vars",
-  short = "-V",
+  "-V",
   help = "What vars to include during Training. Should be a quoted R expression"
 )
-parser <- add_argument(
-  parser,
+parser$add_argument(
   "--exclude",
-  short = "-E",
+  "-E",
   help = "Should training-vars be excluded instead?",
-  flag = TRUE
+  action = "store_true"
 )
 
-argv <- parse_args(parser)
+argv <- parser$parse_args()
 
 # load more libraries
 suppressPackageStartupMessages({

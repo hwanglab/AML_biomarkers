@@ -1,30 +1,28 @@
 #!/usr/bin/env Rscript 
 source("renv/activate.R")
-library(argparser)
+library(argparse)
 
 # parse args
-parser <- arg_parser("Prepare reference inputs for CIBERSORTx")
-parser <- add_argument(
-  parser, "--dir",
-  short = "-d",
+parser <- ArgumentParser("Prepare reference inputs for CIBERSORTx")
+parser$add_argument(
+  "--dir",
+  "-d",
   help = "path to run directory",
   default = ""
 )
-parser <- add_argument(
-  parser,
+parser$add_argument(
   "--id",
-  short = "-i",
+  "-i",
   help = "ID to use for outputs"
 )
-parser <- add_argument(
-  parser,
+parser$add_argument(
   "--verbose",
   "-v",
   help = "should messages be printed? One of: DEBUG, INFO, WARN, ERROR",
   default = "INFO"
 )
 
-argv <- parse_args(parser)
+argv <- parser$parse_args()
 
 # load more libraries
 suppressPackageStartupMessages({

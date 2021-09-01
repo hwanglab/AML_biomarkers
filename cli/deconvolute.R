@@ -1,56 +1,52 @@
-#!/usr/bin/env -S Rscript --no-save --quiet
+#!/usr/bin/env Rscript
 source("renv/activate.R")
-library(argparser)
+library(argparse)
 
 # parse args
-parser <- arg_parser("Deconvolute Samples")
-parser <- add_argument(
-  parser, "--dir",
-  short = "-d",
+parser <- ArgumentParser("Deconvolute Samples")
+parser$add_argument(
+  "--dir",
+  "-d",
   help = "path to run directory",
   default = ""
 )
-parser <- add_argument(
-  parser, "--ref",
-  short = "-r",
+parser$add_argument(
+  "--ref",
+  "-r",
   help = "path to CIBERSORTx GEP",
   default = ""
 )
-parser <- add_argument(
-  parser, "--num-cells",
-  short = "-n",
+parser$add_argument(
+  "--num-cells",
+  "-n",
   help = "number of cells to use for ref creation",
   default = 100
 )
-parser <- add_argument(
-  parser,
+parser$add_argument(
   "--id",
-  short = "-i",
+  "-i",
   help = "ID to use for outputs"
 )
-parser <- add_argument(
-  parser,
+parser$add_argument(
   "--cores",
-  short = "-c",
+  "-c",
   help = "number of cores to use",
   default = 1
 )
-parser <- add_argument(
-  parser,
+parser$add_argument(
   "--verbose",
-  short = "-v",
+  "-v",
   help = "should messages be printed? One of: DEBUG, INFO, WARN, ERROR",
   default = "INFO"
 )
-parser <- add_argument(
-  parser,
+parser$add_argument(
   "--plot-similarity",
-  short = "-s",
+  "-s",
   help = "should the reference simelarity be plotted?",
-  flag = TRUE
+  action = "store_true"
 )
 
-argv <- parse_args(parser)
+argv <- parser$parse_args()
 
 # load more libraries
 suppressWarnings({

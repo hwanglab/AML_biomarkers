@@ -1,70 +1,58 @@
 #!/usr/bin/env Rscript
 source("renv/activate.R")
-library(argparser)
+library(argparse)
 
 # parse args
 
-parser <- arg_parser("Do Differential Clustering Analysis")
-parser <- add_argument(
-  parser,
+parser <- ArgumentParser("Do Differential Clustering Analysis")
+parser$add_argument(
   "--cols",
-  short = "-c",
+  "-c",
   help = "colums to subest",
-  nargs = Inf
+  nargs = "+"
 )
-parser <- add_argument(
-  parser,
+parser$add_argument(
   "--vals",
-  short = "-a",
+  "-a",
   help = "values columns should be. Can specify more than 1 value per column",
-  nargs = Inf
+  nargs = "+"
 )
-parser <- add_argument(
-  parser,
-  "--subset",
-  short = "-s",
-  help = "expression to subset on"
-)
-parser <- add_argument(
-  parser,
+parser$add_argument(
   "--sig-level",
-  short = "-l",
+  "-l",
   help = "p value cutoff",
   default = 0.05
 )
-parser <- add_argument(
-  parser, "--dir",
-  short = "-d",
+parser$add_argument(
+  "--dir",
+  "-d",
   help = "path to run directory",
   default = ""
 )
-parser <- add_argument(
-  parser,
+parser$add_argument(
   "--id",
-  short = "-i",
+  "-i",
   help = "ID to use for outputs",
   default = "time"
 )
-parser <- add_argument(
-  parser,
+parser$add_argument(
   "--invalidate",
-  short = "-I",
+  "-I",
   help = "should the xfun cache be invalidated?",
-  flag = TRUE
+  action = "store_true"
 )
-parser <- add_argument(
-  parser,
+parser$add_argument(
   "--verbose",
   "-v",
   help = "should messages be printed? One of: DEBUG, INFO, WARN, ERROR",
   default = "INFO"
 )
-parser <- add_argument(
-  parser,
+parser$add_argument(
   "--column-names",
-  short = "-C",
+  "-C",
   help = "Just print column names of object",
-  flag = TRUE
+  action = "store_true"
+)
 )
 
 argv <- parse_args(parser)

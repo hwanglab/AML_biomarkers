@@ -1,44 +1,40 @@
 #!/usr/bin/env Rscript
 source("renv/activate.R")
-library(argparser)
+library(argparse)
 
 # parse args
-parser <- arg_parser("Do GSVA")
-parser <- add_argument(
-  parser, "--dir",
-  short = "-d",
+parser <- ArgumentParser("Do GSVA")
+parser$add_argument(
+  "--dir",
+  "-d",
   help = "path to run directory",
   default = ""
 )
-parser <- add_argument(
-  parser,
+parser$add_argument(
   "--id",
-  short = "-i",
+  "-i",
   help = "ID to use for outputs, will read inputs from here"
 )
-parser <- add_argument(
-  parser,
+parser$add_argument(
   "--replicates",
   "-n",
   help = "number of psudoreplicates to use during GSVA",
   default = 3
 )
-parser <- add_argument(
-  parser,
+parser$add_argument(
   "--cores",
   "-c",
   help = "number of cores to use",
   default = 5
 )
-parser <- add_argument(
-  parser,
+parser$add_argument(
   "--verbose",
   "-v",
   help = "should messages be printed? One of: DEBUG, INFO, WARN, ERROR",
   default = "INFO"
 )
 
-argv <- parse_args(parser)
+argv <- parser$parse_args()
 
 # load more libraries
 suppressPackageStartupMessages({
