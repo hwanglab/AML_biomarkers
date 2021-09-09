@@ -54,8 +54,76 @@ parser$add_argument(
   action = "store_true"
 )
 )
+argv <- parser$parse_args()
 
-argv <- parse_args(parser)
+####### Define Functions #######################################################
+DoDimensionReductions <- function(seurat,
+                                  batch_vars = NULL,
+                                  assay = NULL,
+                                  clean = TRUE,
+                                  scale = TRUE,
+                                  features = NULL,
+                                  resolution = 0.8) {
+  assay <- assay %||% Seurat::DefaultAssay(seurat)
+  if (clean) seurat <- Seurat::DietSeurat(seurat)
+
+  verbosity <- function(x) {
+    return(suppressMessages(x))
+  }
+
+  if (clean | scale) {
+    info(logger, "Scaling data...")
+    seurat <- verbosity(Seurat::FindVariableFeatures(seurat))
+    features <- features %||% Seurat::VariableFeatures(seurat)
+
+    if (Seurat:::IsSCT(seurat[[assay]])) {
+      debug(logger, "SCTAssay object detected, getting residuals instead...")
+      seurat <- verbosity(Seurat::GetResidual(seurat, features = features))
+    } else {
+      seurat <- verbosity(Seurat::ScaleData(seurat))
+    }
+  }
+  info(logger, "Running PCA...")
+  seurat <- Seurat::RunPCA(seurat, verbose = FALSE)
+  reduction <- "pca"
+  if (!is.null(batch_vars)) {
+    info(logger, "Running Harmony...")
+    seurat <- verbosity(harmony::RunHarmony(seurat, batch_vars, assay.use = assay))
+    reduction <- "harmony"
+  }
+  info(logger, "Running UMAP...")
+  seurat <- Seurat::RunUMAP(seurat, dims = 1:10, reduction = reduction, verbose = FALSE)
+
+  info(logger, "Finding Clusters...")
+  seurat <- verbosity(Seurat::FindNeighbors(seurat, dims = 1:19))
+  seurat <- verbosity(Seurat::FindClusters(seurat, resolution = resolution))
+  return(seurat)
+}
+
+FindClusterFreq <- function(object, metadata, cluster, sort_by = NULL) {
+  # quote expressions
+  md <- rlang::enquos(metadata)
+  c <- rlang::enquo(cluster)
+  # select meta.data columns from seurat object and calculate freq
+  if (is.null(sort_by)) {
+    freq <- object %>%
+      dplyr::group_by(dplyr::across(.cols = all_of(c(metadata, cluster)))) %>%
+      summarise(n = n(), .groups = "keep") %>%
+      mutate(freq = n / sum(n) * 100)
+  } else {
+    sb <- rlang::enquo(sort_by)
+    freq <- object %>%
+      dplyr::group_by(dplyr::across(.cols = all_of(c(metadata, cluster)))) %>%
+      summarise(n = n(), .groups = "keep") %>%
+      mutate(freq = n / sum(n) * 100) %>%
+      dplyr::arrange(!!sb)
+  }
+  return(freq)
+}
+
+WilcoxTestSafe <- purrr::safely(wilcox.test, otherwise = list(p.value = NA))
+
+####### End Function Definitions ###############################################
 
 if (argv$column_names) {
   suppressPackageStartupMessages({
@@ -79,16 +147,6 @@ if (argv$column_names) {
   quit(save = "no")
 }
 
-if (!is.na(argv$cols) && !is.na(argv$subset)) {
-  warning("Both columns and expression supplied, using expression only")
-  argv$cols <- NA
-  argv$vals <- NA
-}
-
-if (!is.na(argv$subset)) {
-  stop("Do not use this argument: --subset")
-}
-
 if (!is.na(argv$cols) || !is.na(argv$vals)) {
   if (is.na(argv$cols) && is.na(argv$vals)) {
     stop("You must provide both the cols and vals argument")
@@ -100,7 +158,7 @@ suppressPackageStartupMessages({
   library(Seurat)
   library(SeuratDisk)
   library(here)
-  library(rsinglecell)
+  suppressWarnings(library(rsinglecell))
   library(readxl)
   library(biomaRt)
   library(survival)
@@ -186,38 +244,13 @@ source(here("cli/lib/target_clinical.R"))
 
 debug(logger, "Finding Cluster Frequency")
 
-FindClusterFreq <- function(object, metadata, cluster, sort_by = NULL, .debug = FALSE) {
-  # quote expressions
-  md <- rlang::enquos(metadata)
-  c <- rlang::enquo(cluster)
-  if (.debug == TRUE) browser()
-  # select meta.data columns from seurat object and calculate freq
-  if (is.null(sort_by)) {
-    freq <- object %>%
-      dplyr::group_by(dplyr::across(.cols = all_of(c(metadata, cluster)))) %>%
-      summarise(n = n(), .groups = "keep") %>%
-      mutate(freq = n / sum(n) * 100)
-  } else {
-    sb <- rlang::enquo(sort_by)
-    freq <- object %>%
-      dplyr::group_by(dplyr::across(.cols = all_of(c(metadata, cluster)))) %>%
-      summarise(n = n(), .groups = "keep") %>%
-      mutate(freq = n / sum(n) * 100) %>%
-      dplyr::arrange(!!sb)
-  }
-  return(freq)
-}
-
-WilcoxTestSafe <- purrr::safely(wilcox.test, otherwise = list(p.value = NA))
-
-debug(logger, "Finding Cluster Frequency again")
 wilcox_clusters <- FindClusterFreq(
   diagnosis[[]],
   c("patient_id", "prognosis"),
   "clusters"
 ) %>%
   group_by(clusters) %>%
-  summarise(pval = WilcoxTestSafe(freq ~ prognosis)$result$p.value, .groups = "keep") %>%
+  summarise(
   filter(pval <= argv$sig_level) %>%
   pull(clusters)
 
@@ -245,7 +278,6 @@ survival_models <- freq %>%
     patient_id,
     freq
   ) %>%
-  #remove_missing() %>%
   filter(!near(freq, mean(freq))) %>%
   nest() %>%
   mutate(survival = map(
@@ -273,7 +305,7 @@ survival_models <- freq %>%
 
 saveRDS(survival_models, here(output_path, "cache/survival_models.rds"))
 
-pdf(file = here(plots_path, "sc_cluster_survival_analysis.pdf"), width = 3, height = 5)
+pdf(
 ggplot(data = survival_models, mapping = aes(x = mean_diff, y = log_p)) +
   geom_hline(yintercept = -log(argv$sig_level)) +
   geom_point() +
