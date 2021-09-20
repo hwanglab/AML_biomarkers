@@ -140,7 +140,7 @@ debug(logger, paste0("Importing Data from: ", data_filename))
 data <- tryCatch(
   readRDS(data_filename),
   error = function(e) {
-    error(loggger, "Cannot find annotated deconvoluted samples.")
+    error(logger, "Cannot find annotated deconvoluted samples.")
     quit()
   }
 )
