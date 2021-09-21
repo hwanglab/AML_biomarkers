@@ -31,13 +31,12 @@ except FileNotFoundError as e:
     logger.info("Docker not Found. Falling back to Singularity")
     docker_singularity_cmd = "singularity"
 
-try: 
-    subprocess.run("singularity", stderr=subprocess.DEVNULL)
-except FileNotFoundError as e:
-    logger.critical("Singularity Not Found")
-    raise RuntimeError("Docker or Singularity cannot be located")
-
 if docker_singularity_cmd == "singularity":
+    try: 
+        subprocess.run("singularity", stderr=subprocess.DEVNULL)
+    except FileNotFoundError as e:
+        logger.critical("Singularity Not Found")
+        raise RuntimeError("Docker or Singularity cannot be located")
     use_singularity = True
     logger.info("Using Singularity")
 elif docker_singularity_cmd == "docker":
