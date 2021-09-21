@@ -53,7 +53,33 @@ parser$add_argument(
   help = "Just print column names of object",
   action = "store_true"
 )
+parser$add_argument(
+  "--resolution",
+  "-r",
+  help = "resolution to use",
+  default = 0.8
 )
+parser$add_argument(
+  "--batch-correct",
+  "-X",
+  help = "Should integration be done using Seurat",
+  action = "store_true"
+)
+parser$add_argument(
+  "--cores",
+  "--threads",
+  "-t",
+  help = "number of processes to use. 0 (defualt) means all cores",
+  default = 0,
+  type = "integer"
+)
+parser$add_argument(
+  "--slurm",
+  "-S",
+  help = "should batchtools be used with slurm",
+  action = "store_true"
+)
+
 argv <- parser$parse_args()
 
 ####### Define Functions #######################################################
@@ -133,7 +159,7 @@ if (argv$column_names) {
   })
   seurat <- LoadH5Seurat(
     file.path(Sys.getenv("AML_DATA"), "05_seurat_annotated.h5Seurat"),
-    assays = c("RNA", "SCT")
+    assays = c("RNA")
   )
   metadata <- seurat[[]] %>%
     select(where(is.character)) %>%
@@ -165,12 +191,16 @@ suppressPackageStartupMessages({
   library(survminer)
   library(xfun)
   library(msigdbr)
+  library(future)
   library(furrr)
+  library(future.batchtools)
   library(EnhancedVolcano)
   library(log4r)
   library(tidyverse)
+  library(glue)
 })
 
+options(future.globals.maxSize = 32 * 1024^3)
 source(here("lib/functions.R"))
 logger <- logger(threshold = argv$verbose)
 
@@ -190,52 +220,161 @@ dir.create(here(output_path), showWarnings = FALSE)
 dir.create(here(plots_path), showWarnings = FALSE)
 
 if (argv$invalidate) info("The cache will be invalidated")
+# set plan
+if (argv$cores == 0) argv$cores <- availableCores()[[1]]
+
+if (argv$slurm) info(logger, "We're planning to use slurm for some futures")
+
+SetPlan <- function(schedule = FALSE) {
+  if (argv$slurm && schedule) {
+    debug(logger, "The plan is set to batchtools using slurm")
+    walltime_hours <- 24
+    mem_gb <- 64
+    resources <- list(mem = mem_gb, ncpus = 4, walltime = walltime_hours * 60^2)
+    plan(
+      list(
+        tweak("batchtools_slurm", resources = resources),
+        "multicore"
+      )
+    )
+  } else {
+    debug(logger, "The plan is set to multisession")
+    plan("multisession", workers = argv$cores)
+    info(logger, glue("The number of workers is {nbrOfWorkers()[[1]]}"))
+  }
+}
+
+furrr_options <- furrr_options(stdout = FALSE, seed = 1000000)
+
+# so the plan here is to separate the computation into 4 steps 
+# and use cache_rds to save the steps along the way
+# Step 1: Subset object
+# Step 2: If we want to integrate, Split data, and run SCTransform
+# Step 3: If we want to integrate, integrate data using IntegrateData
+# Step 4: Do dimension reductions
+
 diagnosis <- cache_rds(
   expr = {
+    assays_to_load <- c("RNA", "SCT")
+    if (argv$batch_correct) assays_to_load <- c("RNA")
+    assays_to_print <- glue_collapse(assays_to_load, sep = ", ", last = " and ")
+    info(logger, glue("The assay(s) being loaded is/are {assays_to_print}"))
     seurat <- LoadH5Seurat(
       file.path(Sys.getenv("AML_DATA"), "05_seurat_annotated.h5Seurat"),
-      assays = c("RNA", "SCT")
+      assays = assays_to_load,
+      verbose = FALSE
     )
-
-    DefaultAssay(seurat) <- "SCT"
 
     debug(logger, "Subsetting Seurat Object")
-    if (is.na(argv$subset)) {
-      MatchValuesForSubset <- function(val, col) {
-        rownames(filter(seurat[[]], .data[[col]] == val))
-      }
-
-      res <- map(argv$cols, .f = function(col, vals) {
-        unique(unlist(lapply(vals, MatchValuesForSubset, col)))
-      }, argv$vals)
-
-      cells <- reduce(res, .f = function(x, y) {
-        x[match(x, y)]
-      })
-      cells <- cells[!is.na(cells)]
-
-      diagnosis <- seurat[, cells]
-    } else {
-      diagnosis <- subset(seurat, parse(text = argv$subset))
+    MatchValuesForSubset <- function(val, col) {
+      rownames(filter(seurat[[]], .data[[col]] == val))
     }
 
-    info(logger, "Doing Dimension Reductions")
-    diagnosis <- DoDimensionReductions(
-      diagnosis,
-      batch_vars = c("seq_batch", "sort_batch")
-    )
+    res <- map(argv$cols, .f = function(col, vals) {
+      unique(unlist(lapply(vals, MatchValuesForSubset, col)))
+    }, argv$vals)
 
-    diagnosis[["clusters"]] <- Idents(diagnosis)
+    cells <- reduce(res, .f = function(x, y) {
+      x[match(x, y)]
+    })
+    cells <- cells[!is.na(cells)]
+
+    diagnosis <- seurat[, cells]
     diagnosis
   },
-  file = "seurat.rds",
+  file = "seurat_subset.rds",
   dir = paste0(output_path, "/cache/"),
   rerun = argv$invalidate,
   hash = list(
     file.info(
       file.path(Sys.getenv("AML_DATA"), "05_seurat_annotated.h5Seurat")
-    )
+    ),
+    argv$vals,
+    argv$cols
   )
+)
+
+if (argv$batch_correct) {
+  object_list <- cache_rds(
+    {
+      debug(logger, "Splitting data by Patient ID")
+      object_list <- SplitObject(diagnosis, split.by = "patient_id")
+      info(logger, glue("Starting Seurat Integration on {length(object_list)} datasets"))
+      debug(logger, "Normalizing using SCTransform")
+      SetPlan(schedule = TRUE)
+      object_list <- future_map(
+        object_list,
+        .f = SCTransform,
+        .options = furrr_options,
+        verbose = FALSE
+      )
+      object_list
+    },
+    file = "seurat_normalized_bc.rds",
+    dir = paste0(output_path, "/cache/"),
+    rerun = argv$invalidate,
+    hash = list(diagnosis)
+  )
+
+  SetPlan()
+
+  diagnosis <- cache_rds(
+    {
+      debug(logger, "Selecting Integration Features")
+      features <- SelectIntegrationFeatures(
+        object.list = object_list,
+        nfeatures = 2000,
+        verbose = FALSE
+      )
+      debug(logger, "Preparing SCTransformed data for Integration")
+      object_list <- PrepSCTIntegration(
+        object.list = object_list,
+        anchor.features = features,
+        verbose = FALSE
+      )
+      debug(logger, "Finding Anchors")
+      anchors <- FindIntegrationAnchors(
+        object.list = object_list,
+        anchor.features = features,
+        normalization.method = "SCT",
+        verbose = FALSE
+      )
+      info(logger, "Integrating Data")
+      diagnosis <- IntegrateData(
+        anchorset = anchors,
+        normalization.method = "SCT",
+        verbose = FALSE
+      )
+      diagnosis
+    },
+    file = "seurat_integrated_bc.rds",
+    dir = paste0(output_path, "/cache/"),
+    rerun = argv$invalidate,
+    hash = list(object_list)
+  )
+}
+
+info(logger, "Doing Dimension Reductions")
+
+diagnosis <- cache_rds(
+  {
+    batch_vars <- c("seq_batch", "sort_batch")
+    if (argv$batch_correct) batch_vars <- NULL
+
+    diagnosis <- DoDimensionReductions(
+      diagnosis,
+      batch_vars = batch_vars,
+      resolution = argv$resolution,
+      clean = !argv$batch_correct,
+      scale = !argv$batch_correct
+    )
+    diagnosis[["clusters"]] <- Idents(diagnosis)
+    diagnosis
+  },
+  file = "seurat_dimred.rds",
+  dir = paste0(output_path, "/cache/"),
+  rerun = argv$invalidate,
+  hash = list(diagnosis, argv$batch_correct)
 )
 
 info(logger, "Doing Frequency Analysis")
@@ -251,6 +390,8 @@ wilcox_clusters <- FindClusterFreq(
 ) %>%
   group_by(clusters) %>%
   summarise(
+    pval = WilcoxTestSafe(freq ~ prognosis)$result$p.value, .groups = "keep"
+  ) %>%
   filter(pval <= argv$sig_level) %>%
   pull(clusters)
 
@@ -306,6 +447,10 @@ survival_models <- freq %>%
 saveRDS(survival_models, here(output_path, "cache/survival_models.rds"))
 
 pdf(
+  file = here(plots_path, "sc_cluster_survival_analysis.pdf"),
+  width = 3,
+  height = 5
+)
 ggplot(data = survival_models, mapping = aes(x = mean_diff, y = log_p)) +
   geom_hline(yintercept = -log(argv$sig_level)) +
   geom_point() +

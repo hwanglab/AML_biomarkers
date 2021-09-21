@@ -48,7 +48,7 @@ if (!dir.exists(here(output_path))) {
 data_filename <- list.files(
   path = here(output_path, "cache/"),
   full.names = TRUE,
-  pattern = "^seurat_"
+  pattern = "^seurat_dimred_"
 )
 
 if (length(data_filename) > 1) fatal("There is more than one cached object")
@@ -64,7 +64,7 @@ seurat_down <- cache_rds(
   dir = paste0(output_path, "/cache/")
 )
 
-cibersort_data <- GetAssayData(seurat_down, slot = "data")
+cibersort_data <- GetAssayData(seurat_down, slot = "data", assay = "SCT")
 cibersort_data <- as.data.frame(cibersort_data)
 cibersort_clusters <- as.data.frame(
   t(paste0("cluster", Idents(seurat_down)))
