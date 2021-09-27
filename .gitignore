@@ -18,3 +18,4 @@ slurm*
 *.sif
 *.DS_Store
 __pycache__
+msigdb
