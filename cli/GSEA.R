@@ -196,3 +196,9 @@ for (cluster in names(plot_res)) {
   graphics.off()
 }
 
+plot_res %>%
+  unlist(recursive = FALSE) %>%
+  map_df("result", .id = "id") %>%
+  separate(id, into = c("cluster", "gene_set"), sep = "\\.") %>%
+  separate(cluster, into = c("prognosis", "cluster")) %>%
+  write_tsv(glue("{output_path}/GSEA.tsv"))
