@@ -262,13 +262,30 @@ for (group in object_list_names) {
   results[[group]] <- reduce(results[[group]], bind_rows)
 }
 
+info(logger, "Doing broader DE Tests")
+broad_results <- cache_rds(
+    FindMarkers(
+        seurat_merged,
+        ident.1 = "Poor",
+        ident.2 = "Favorable",
+        method = "MAST",
+        assay = "RNA",
+        group.by = "prognosis"
+      )
+    ),
+    file = glue("ref_DE_tests_broad.rds"),
+    rerun = argv$invalidate,
+    dir = paste0(output_path, "/cache/")
+  )
+broad_results <- mutate(broad_results, ref = "PvF")
+
 debug(logger, "Cleaning up results.")
 results <- map2(
   results,
   rev(names(cluster_ids_ann_unique)),
   ~ mutate(.x, ref = .y)
 )
-
+results[["PvF"]] <- broad_results
 results <- reduce(results, bind_rows)
 
 write_tsv(results, here(output_path, "cluster_split_DE_master.tsv"))
