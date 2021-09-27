@@ -257,26 +257,25 @@ for (group in object_list_names) {
     cluster_ids_ann_unique[[group]],
     ~ mutate(.x, cluster = .y)
   ) %>%
-  map(rownames_to_column, var = "gene")
+    map(rownames_to_column, var = "gene")
 
   results[[group]] <- reduce(results[[group]], bind_rows)
 }
 
 info(logger, "Doing broader DE Tests")
 broad_results <- cache_rds(
-    FindMarkers(
-        seurat_merged,
-        ident.1 = "Poor",
-        ident.2 = "Favorable",
-        method = "MAST",
-        assay = "RNA",
-        group.by = "prognosis"
-      )
-    ),
-    file = glue("ref_DE_tests_broad.rds"),
-    rerun = argv$invalidate,
-    dir = paste0(output_path, "/cache/")
-  )
+  FindMarkers(
+    seurat_merged,
+    ident.1 = "Poor",
+    ident.2 = "Favorable",
+    method = "MAST",
+    assay = "RNA",
+    group.by = "prognosis"
+  ),
+  file = glue("ref_DE_tests_broad.rds"),
+  rerun = argv$invalidate,
+  dir = paste0(output_path, "/cache/")
+)
 broad_results <- mutate(broad_results, ref = "PvF")
 
 debug(logger, "Cleaning up results.")
