@@ -28,7 +28,7 @@ parser$add_argument(
   default = "INFO"
 )
 
-argv <- parser$parse_args(c("-i", "flt3_cebpa_stem_bc", "-v", "DEBUG"))
+argv <- parser$parse_args()
 
 # load more libraries
 suppressPackageStartupMessages({
@@ -79,10 +79,12 @@ MakeGeneList <- function(df, entrez = FALSE) {
   return(gene_list)
 }
 
-markers_fil <- filter(markers, is.finite(avg_log2FC)) %>%
-  group_by(cluster) %>%
-  arrange(desc(avg_log2FC), .by_group = TRUE) %>%
-  mutate(entrez = mapIds(org.Hs.eg.db, gene, "ENTREZID", "SYMBOL"))
+suppressMessages({
+  markers_fil <- filter(markers, is.finite(avg_log2FC)) %>%
+    group_by(cluster) %>%
+    arrange(desc(avg_log2FC), .by_group = TRUE) %>%
+    mutate(entrez = mapIds(org.Hs.eg.db, gene, "ENTREZID", "SYMBOL"))
+})
 
 msigdb <- list(
   HALLMARK = "msigdb/gmt/h.all.v7.4.entrez.gmt",
@@ -110,67 +112,82 @@ names(gene_list_entrez) <- markers_fil_nest$cluster
 
 info(logger, "Running GSEA")
 res <- list()
-res[["GO"]] <- future_map(
-  gene_list,
-  ~ gseGO(
-    geneList = .x,
-    OrgDb = org.Hs.eg.db,
-    ont = "BP",
-    keyType = "SYMBOL",
-    eps = 0,
-    verbose = FALSE
-  ),
-  .options = furrr_options
-)
-res[["MKEGG"]] <- future_map(
-  gene_list_entrez,
-  ~ gseMKEGG(
-    geneList = .x,
-    organism = "hsa",
-    eps = 0,
-    verbose = FALSE
-  ),
-  .options = furrr_options
-)
-res[["KEGG"]] <- future_map(
-  gene_list_entrez,
-  ~ gseKEGG(
-    geneList = .x,
-    organism = "hsa",
-    eps = 0,
-    verbose = FALSE
-  ),
-  .options = furrr_options
-)
-res[["DO"]] <- future_map(
-  gene_list_entrez,
-  ~ gseDO(
-    geneList = .x,
-    eps = 0,
-    verbose = FALSE
-  ),
-  .options = furrr_options
-)
-msigdb_res <- list()
+p_adjust_method <- "fdr"
+suppressMessages({
+  suppressWarnings({
+    res[["GO"]] <- future_map(
+      gene_list,
+      ~ gseGO(
+        geneList = .x,
+        OrgDb = org.Hs.eg.db,
+        ont = "BP",
+        keyType = "SYMBOL",
+        eps = 0,
+        verbose = FALSE,
+        pAdjustMethod = p_adjust_method
+      ),
+      .options = furrr_options
+    )
+    debug(logger, "    GO Done")
+    res[["MKEGG"]] <- future_map(
+      gene_list_entrez,
+      ~ gseMKEGG(
+        geneList = .x,
+        organism = "hsa",
+        eps = 0,
+        verbose = FALSE,
+        pAdjustMethod = p_adjust_method
+      ),
+      .options = furrr_options
+    )
+    debug(logger, "    MKEGG Done")
+    res[["KEGG"]] <- future_map(
+      gene_list_entrez,
+      ~ gseKEGG(
+        geneList = .x,
+        organism = "hsa",
+        eps = 0,
+        verbose = FALSE,
+        pAdjustMethod = p_adjust_method
+      ),
+      .options = furrr_options
+    )
+    debug(logger, "    KEGG Done")
+    res[["DO"]] <- future_map(
+      gene_list_entrez,
+      ~ gseDO(
+        geneList = .x,
+        eps = 0,
+        verbose = FALSE,
+        pAdjustMethod = p_adjust_method
+      ),
+      .options = furrr_options
+    )
+    debug(logger, "    DO Done")
+    msigdb_res <- list()
 
-for (set in names(msigdb)) {
-  msigdb_res[[set]] <- future_map(
-    gene_list_entrez,
-    ~ GSEA(
-      geneList = .x,
-      TERM2GENE = msigdb[[set]],
-      eps = 0,
-      verbose = FALSE
-    ),
-    .options = furrr_options
-  )
-}
+    for (set in names(msigdb)) {
+      msigdb_res[[set]] <- future_map(
+        gene_list_entrez,
+        ~ GSEA(
+          geneList = .x,
+          TERM2GENE = msigdb[[set]],
+          eps = 0,
+          verbose = FALSE,
+          pAdjustMethod = p_adjust_method
+        ),
+        .options = furrr_options
+      )
+      debug(logger, glue("    {set} Done"))
+    }
+  })
+})
 
 res <- append(res, msigdb_res)
 
 plot_res <- transpose(res)
 plot_res <- map(plot_res, ~ discard(.x, ~ !nrow(.x@result)))
-dir.create(glue("{plots_path}/GSEA"))
+dir.create(glue("{plots_path}/GSEA"), showWarnings = FALSE)
 
 for (cluster in names(plot_res)) {
   plots <- list()
@@ -202,3 +219,6 @@ plot_res %>%
   separate(id, into = c("cluster", "gene_set"), sep = "\\.") %>%
   separate(cluster, into = c("prognosis", "cluster")) %>%
   write_tsv(glue("{output_path}/GSEA.tsv"))
+
+source(here("lib/WriteInvocation.R"))
+WriteInvocation(argv, output_path = here(output_path, "invocation"))
