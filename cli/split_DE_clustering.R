@@ -61,7 +61,7 @@ parser$add_argument(
   action = "store_true"
 )
 
-argv <- parser$parse_args(c("-i", "flt3_cebpa_stem_bc", "-XS", "-v", "DEBUG"))
+argv <- parser$parse_args()
 
 suppressPackageStartupMessages({
   library(Seurat)
