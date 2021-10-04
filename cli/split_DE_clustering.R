@@ -276,7 +276,7 @@ broad_results <- cache_rds(
   rerun = argv$invalidate,
   dir = paste0(output_path, "/cache/")
 )
-broad_results <- mutate(broad_results, ref = "PvF")
+broad_results <- mutate(broad_results, ref = "PvF") %>% rownames_to_column(var = "gene")
 
 debug(logger, "Cleaning up results.")
 results <- map2(
