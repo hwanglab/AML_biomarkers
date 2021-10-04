@@ -33,6 +33,8 @@ argv <- parser$parse_args()
 # load more libraries
 suppressPackageStartupMessages({
   library(clusterProfiler)
+  library(ggnewscale)
+  library(ggupset)
   library(DOSE)
   library(enrichplot)
   library(patchwork)
@@ -113,6 +115,7 @@ names(gene_list_entrez) <- markers_fil_nest$cluster
 info(logger, "Running GSEA")
 res <- list()
 p_adjust_method <- "fdr"
+options(mc.cores = 1L) # disable BiocParallel in favor of futureverse
 suppressMessages({
   suppressWarnings({
     res[["GO"]] <- future_map(
