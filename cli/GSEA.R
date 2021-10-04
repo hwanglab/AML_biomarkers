@@ -69,7 +69,10 @@ if (!dir.exists(here(output_path))) {
   quit()
 }
 
-markers <- read_tsv(here(output_path, "cluster_split_DE_master.tsv"), col_types = cols())
+markers <- read_tsv(
+  here(output_path, "cluster_split_DE_master.tsv"),
+  col_types = cols()
+)
 
 MakeGeneList <- function(df, entrez = FALSE) {
   gene_list <- df$avg_log2FC
