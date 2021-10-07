@@ -95,6 +95,9 @@ if (argv$dir == "") {
   plots_path <- paste0(parser$run_dir, "/plots/", argv$id)
 }
 
+bc_ext <- ""
+if (argv$batch_correct) bc_ext <- "bc_"
+
 debug(logger, paste0("Writing Outputs to: ", here(output_path)))
 
 if (argv$cores == 0) argv$cores <- availableCores()[[1]]
@@ -124,11 +127,19 @@ SetPlan <- function(schedule = FALSE, ncpu = 1, mem = 64) {
   }
 }
 
+if (argv$batch_correct) {
 data_filename <- list.files(
   path = here(output_path, "cache/"),
   full.names = TRUE,
   pattern = "^seurat_integrated_bc_"
 )
+} else {
+  data_filename <- list.files(
+  path = here(output_path, "cache/"),
+  full.names = TRUE,
+  pattern = "^seurat_dimred_"
+)
+}
 
 if (length(data_filename) > 1) {
   fatal(logger, "There is more than one cached object")
@@ -160,7 +171,7 @@ DoDimensionReductions <- function(object) {
 info(logger, "Starting Dimension Reduction and Clustering")
 object_list <- cache_rds(
   future_map(object_list, DoDimensionReductions, .options = furrr_options),
-  file = "dim_red_custom_de.rds",
+  file = paste0(bc_ext, "dim_red_custom_de.rds"),
   rerun = argv$invalidate,
   dir = paste0(output_path, "/cache/")
 )
@@ -185,7 +196,7 @@ seurat_merged <- cache_rds(
     verbose = FALSE,
     reduction.name = "pca_merged"
   ),
-  file = "pca_de_tests.rds",
+  file = paste0(bc_ext, "pca_de_tests.rds"),
   rerun = argv$invalidate,
   dir = paste0(output_path, "/cache/")
 )
@@ -198,7 +209,7 @@ seurat_merged <- cache_rds(
     reduction.name = "umap_merged",
     verbose = FALSE
   ),
-  file = "umap_de_tests.rds",
+  file = paste0(bc_ext, "umap_de_tests.rds"),
   rerun = argv$invalidate,
   dir = paste0(output_path, "/cache/")
 )
@@ -213,14 +224,14 @@ SetPlan(schedule = TRUE, ncpu = 8)
 debug(logger, "Doing DE Tests on seperate datasets")
 markers_sep <- cache_rds(
   future_map(object_list, FindAllMarkers, method = "MAST"),
-  file = "sep_de_contrasts.rds",
+  file = paste0(bc_ext, "sep_de_contrasts.rds"),
   rerun = argv$invalidate,
   dir = paste0(output_path, "/cache/")
 )
 walk2(
   markers_sep,
   object_list_names,
-  ~ write_tsv(.x, glue("{output_path}/cluster_split_DE_{.y}.tsv"))
+  ~ write_tsv(.x, glue("{output_path}/{bc_ext}cluster_split_DE_{.y}.tsv"))
 )
 
 cluster_ids_ann_unique <- map(cluster_ids_ann, unique)
@@ -247,7 +258,7 @@ for (group in object_list_names) {
         assay = "RNA"
       )
     ),
-    file = glue("ref_DE_tests_{group}.rds"),
+    file = glue("{bc_ext}ref_DE_tests_{group}.rds"),
     rerun = argv$invalidate,
     dir = paste0(output_path, "/cache/")
   )
@@ -272,11 +283,11 @@ broad_results <- cache_rds(
     assay = "RNA",
     group.by = "prognosis"
   ),
-  file = glue("ref_DE_tests_broad.rds"),
+  file = glue("{bc_ext}ref_DE_tests_broad.rds"),
   rerun = argv$invalidate,
   dir = paste0(output_path, "/cache/")
 )
-broad_results <- mutate(broad_results, ref = "PvF") %>% rownames_to_column(var = "gene")
+broad_results <- mutate(broad_results, ref = "PvF", cluster = "PvF") %>% rownames_to_column(var = "gene")
 
 debug(logger, "Cleaning up results.")
 results <- map2(
@@ -287,7 +298,7 @@ results <- map2(
 results[["PvF"]] <- broad_results
 results <- reduce(results, bind_rows)
 
-write_tsv(results, here(output_path, "cluster_split_DE_master.tsv"))
+write_tsv(results, here(output_path, glue("{bc_ext}cluster_split_DE_master.tsv")))
 
 source(here("lib/WriteInvocation.R"))
 WriteInvocation(argv, output_path = here(output_path, "invocation"))

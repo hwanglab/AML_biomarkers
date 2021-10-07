@@ -27,6 +27,12 @@ parser$add_argument(
   help = "should messages be printed? One of: DEBUG, INFO, WARN, ERROR",
   default = "INFO"
 )
+parser$add_argument(
+  "--batch-correct",
+  "-X",
+  help = "Should intetegraed data be used from Seurat",
+  action = "store_true"
+)
 
 argv <- parser$parse_args()
 
@@ -59,6 +65,9 @@ if (argv$dir == "") {
   plots_path <- paste0(parser$run_dir, "/plots/", argv$id)
 }
 
+bc_ext <- ""
+if (argv$batch_correct) bc_ext <- "bc_"
+
 if (!dir.exists(here(plots_path))) {
   debug(logger, "Plots directory is being created")
   dir.create(here(plots_path))
@@ -70,7 +79,7 @@ if (!dir.exists(here(output_path))) {
 }
 
 markers <- read_tsv(
-  here(output_path, "cluster_split_DE_master.tsv"),
+  here(output_path, glue("{bc_ext}cluster_split_DE_master.tsv")),
   col_types = cols()
 )
 
@@ -193,7 +202,7 @@ res <- append(res, msigdb_res)
 
 plot_res <- transpose(res)
 plot_res <- map(plot_res, ~ discard(.x, ~ !nrow(.x@result)))
-dir.create(glue("{plots_path}/GSEA"), showWarnings = FALSE)
+dir.create(glue("{plots_path}/{bc_ext}GSEA"), showWarnings = FALSE)
 
 for (cluster in names(plot_res)) {
   plots <- list()
@@ -214,7 +223,7 @@ for (cluster in names(plot_res)) {
       ) +
       plot_layout(widths = c(5, 2))
   }
-  pdf(glue("{plots_path}/GSEA/{cluster}.pdf"), width = 35, height = 22)
+  pdf(glue("{plots_path}/{bc_ext}GSEA/{cluster}.pdf"), width = 35, height = 22)
   print(plots)
   graphics.off()
 }
@@ -224,7 +233,7 @@ plot_res %>%
   map_df("result", .id = "id") %>%
   separate(id, into = c("cluster", "gene_set"), sep = "\\.") %>%
   separate(cluster, into = c("prognosis", "cluster")) %>%
-  write_tsv(glue("{output_path}/GSEA.tsv"))
+  write_tsv(glue("{output_path}/{bc_ext}GSEA.tsv"))
 
 source(here("lib/WriteInvocation.R"))
 WriteInvocation(argv, output_path = here(output_path, "invocation"))
