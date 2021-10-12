@@ -34,11 +34,24 @@ parser$add_argument(
   nargs = "+"
 )
 parser$add_argument(
-  "--gene-et-name",
+  "--gene-set-name",
   "-G",
   help = "Name of gene set for filenames"
 )
+parser$add_argument(
+  "--cluster",
+  "-c",
+  help = "number of cluster to use"
+)
+parser$add_argument(
+  "--dataset",
+  "-D",
+  help = "which dataset to use",
+  required = TRUE
+)
+argv <- parser$parse_args()
 suppressPackageStartupMessages({
+  library(org.Hs.eg.db)
   library(Seurat)
   library(here)
   library(pheatmap)
@@ -50,32 +63,108 @@ suppressPackageStartupMessages({
 
 logger <- logger(threshold = argv$verbose)
 
+if (argv$dir == "") {
+  output_path <- paste0("outs/", argv$id)
+  plots_path <- paste0("plots/", argv$id)
+} else {
+  output_path <- paste0(parser$run_dir, "/outs/", argv$id)
+  plots_path <- paste0(parser$run_dir, "/plots/", argv$id)
+}
+
+bc_ext <- ""
+if (argv$batch_correct) bc_ext <- "bc_"
+
 if (argv$batch_correct) {
-data_filename <- list.files(
-  path = here(output_path, "cache/"),
-  full.names = TRUE,
-  pattern = "^seurat_integrated_bc_"
-)
+  data_filename <- list.files(
+    path = here(output_path, "cache/"),
+    full.names = TRUE,
+    pattern = "^seurat_integrated_bc_"
+  )
 } else {
   data_filename <- list.files(
-  path = here(output_path, "cache/"),
-  full.names = TRUE,
-  pattern = "^seurat_dimred_"
-)
+    path = here(output_path, "cache/"),
+    full.names = TRUE,
+    pattern = "^seurat_dimred_"
+  )
 }
 if (length(data_filename) > 1) {
   fatal(logger, "There is more than one cached object")
   quit()
 }
 
-create.dir(glue("{plots_path}/leading_edge_{argv$gene_set_name}"))
+### new method
+# Get GSEA Res
+# Get Leading Edge of Pathway from contrast
+# Translate from entrez ID (if applicable)
+# Use genes as input to Heatmap
+
+debug(logger, "Reading in GSVA results")
+gsea_res <- read_tsv(glue("{output_path}/{bc_ext}GSEA.tsv"), col_types = cols())
+
+gsea_res <- gsea_res %>% filter(ID == argv$gene_set_name)
+
+if (nrow(gsea_res) == 1) {
+  fatal(logger, glue("There are no rows matching {argv$gene_set_name}"))
+  quit(staus = 1)
+}
+
+debug(logger, "Extracting Leading Edge Genes")
+gsea_res <- gsea_res %>% filter(prognosis == argv$dataset)
+
+# if (length(argv$cluster) != 0) {
+#   gsea_res <- filter(gsea_res, cluster == argv$cluster)
+# }
+if (nrow(gsea_res) == 0) {
+  fatal(
+    logger,
+    glue("There are no rows matching {argv$dataset} and/or {argv$cluster}")
+  )
+  quit(status = 1)
+}
+leading_edge <- pull(gsea_res, core_enrichment)
+
+leading_edge <- unlist(strsplit(leading_edge, "/"))
+
+database <- pull(gsea_res, gene_set)
+
+if (database != "GO") {
+  debug(logger, "Translating entrez IDs to symbols")
+  leading_edge <- mapIds(org.Hs.eg.db, leading_edge, "SYMBOL", "ENTREZID")
+}
+
+debug(logger, glue("Saving to: {plots_path}/leading_edge_{argv$gene_set_name}"))
+dir.create(
+  glue("{plots_path}/leading_edge/{argv$dataset}"),
+  recursive = TRUE,
+  showWarnings = FALSE
+)
 seurat <- readRDS(data_filename)
 
 info(logger, "Averaging Expression")
 
-expression <- AverageExpression(seurat, features = argv$genes, assays = "SCT", slot = "data", group.by = "prognosis", verbose = FALSE)$SCT
-filename_feats <- glue_collapse(features, sep = "_", width = 10)
-filename <- glue("{plots_path}/leading_edge_{argv$gene_set_name}/heatmap_{filename_feats}.tsv")
+expression <- AverageExpression(
+  seurat,
+  features = leading_edge,
+  assays = "SCT",
+  slot = "data",
+  group.by = "prognosis",
+  verbose = FALSE
+)$SCT
+filename_feats <- glue_collapse(leading_edge, sep = "_", width = 10)
+filename <- glue(
+  "{plots_path}/leading_edge/{argv$dataset}/heatmap_{argv$gene_set_name}.pdf"
+)
 
+cellheight <- if_else(length(leading_edge) > 10, 1, 10)
 info(logger, "Plotting Results")
-pheatmap(expression, color = viridis(100), cellwidth = 10, cellheight = 10, cluster_rows = FALSE, cluster_cols = FALSE, filename = filename)
+pheatmap(
+  expression,
+  color = viridis(100),
+  cellwidth = 10,
+  cellheight = cellheight,
+  cluster_rows = FALSE,
+  cluster_cols = FALSE,
+  fontsize_row = 1,
+  filename = filename
+)
+info(logger, "Done!")
