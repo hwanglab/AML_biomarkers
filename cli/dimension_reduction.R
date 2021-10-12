@@ -79,6 +79,14 @@ parser$add_argument(
   help = "should batchtools be used with slurm",
   action = "store_true"
 )
+parser$add_argument(
+  "--batch-correct-method",
+  "-M",
+  "--bc-method",
+  help = "which batch correction method to use",
+  default = "CCA",
+  choices = c("CCA", "RPCA")
+)
 
 argv <- parser$parse_args()
 
@@ -318,6 +326,16 @@ if (argv$batch_correct) {
 
   SetPlan()
 
+  bc_filename <- glue("seurat_integrated_{argv$batch_correct_method}.rds")
+
+
+
+features <- SelectIntegrationFeatures(object.list = ifnb.list, nfeatures = 3000)
+ifnb.list <- PrepSCTIntegration(object.list = ifnb.list, anchor.features = features)
+ifnb.list <- lapply(X = ifnb.list, FUN = RunPCA, features = features)
+
+info(logger, glue("Preparing to integrate using {argv$batch_correct_method"))
+
   diagnosis <- cache_rds(
     {
       debug(logger, "Selecting Integration Features")
@@ -332,11 +350,17 @@ if (argv$batch_correct) {
         anchor.features = features,
         verbose = FALSE
       )
+      if (argv$batch_correct_method == "RPCA") {
+        debug(logger, "Running PCA on each dataset")
+        object_list <- future_map(object_list, RunPCA, features = features)
+      }
+      bc_method <- if_else(argv$batch_correct_method == "CCA", "cca", "rpca")
       debug(logger, "Finding Anchors")
       anchors <- FindIntegrationAnchors(
         object.list = object_list,
         anchor.features = features,
         normalization.method = "SCT",
+        reduction = bc_method,
         verbose = FALSE
       )
       info(logger, "Integrating Data")
@@ -347,7 +371,7 @@ if (argv$batch_correct) {
       )
       diagnosis
     },
-    file = "seurat_integrated_bc.rds",
+    file = bc_filename,
     dir = paste0(output_path, "/cache/"),
     rerun = argv$invalidate,
     hash = list(object_list)
