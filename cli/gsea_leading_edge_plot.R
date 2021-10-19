@@ -89,7 +89,7 @@ if (argv$batch_correct) {
 }
 if (length(data_filename) > 1) {
   fatal(logger, "There is more than one cached object")
-  quit()
+  quit(status = 1)
 }
 
 ### new method

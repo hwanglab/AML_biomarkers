@@ -141,7 +141,7 @@ data <- tryCatch(
   readRDS(data_filename),
   error = function(e) {
     error(logger, "Cannot find annotated deconvoluted samples.")
-    quit()
+    quit(status = 1)
   }
 )
 
@@ -262,7 +262,7 @@ if (length(lasso_model_red) == 0) {
   error(logger, "The lasso model is empty!")
   source(here("lib/WriteInvocation.R"))
   WriteInvocation(argv, output_path = here(output_path, "invocation"))
-  quit()
+  quit(status = 1)
 }
 
 times <- c(

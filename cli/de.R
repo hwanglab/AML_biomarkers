@@ -329,7 +329,7 @@ if (!is_empty(genes)) {
 if (length(argv$clusters) != 0) {
   if (length(argv$clusters) == 1) {
     error(logger, "You must have at least 2 clusters selected")
-    quit()
+    quit(status = 1)
   }
   cells <- WhichCells(seurat, idents = argv$clusters)
   seurat_selected <- seurat[, cells]

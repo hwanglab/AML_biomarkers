@@ -98,7 +98,7 @@ if (argv$filter_genesets) {
   pos_is_na <- possibly(is.na, otherwise = TRUE)
   if (pos_is_na(p) || length(p) == 0) {
     error(logger, "The p value cutoff is somehow not set")
-    quit()
+    quit(status = 1)
   }
   sets <- map(data_filtered, GetSignificantGeneSets, p = p)
   nsets <- map_int(sets, length)

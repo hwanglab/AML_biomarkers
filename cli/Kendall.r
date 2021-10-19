@@ -64,7 +64,7 @@ data_filename <- list.files(
 
 if (length(data_filename) > 1) {
   fatal(logger, "There is more than one cached object")
-  quit()
+  quit(status = 1)
 }
 
 seurat <- readRDS(data_filename)

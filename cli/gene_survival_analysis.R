@@ -240,7 +240,7 @@ target_subsets <- list(
 
 if (any(map_lgl(target_subsets, plyr::empty))) {
   error(logger, "TARGET subseting FAILED")
-  quit()
+  quit(status = 1)
 }
 
 debug(logger, glue("Names of initial data sets: {PrintGluedList(names(annotated_datasets))}"))
@@ -331,7 +331,7 @@ if (argv$split) {
   )
   if (plyr::empty(split$train)) {
     error(logger, "Split Failed. Training Data empty")
-    quit()
+    quit(status = 1)
   }
   saveRDS(
     map(split, ~ .x[[1]]),
@@ -408,7 +408,7 @@ if (length(lasso_model_red) == 0) {
   error(logger, "The lasso model is empty!")
   source(here("lib/WriteInvocation.R"))
   WriteInvocation(argv, output_path = here(output_path, "invocation"))
-  quit()
+  quit(status = 1)
 }
 
 times <- c(
