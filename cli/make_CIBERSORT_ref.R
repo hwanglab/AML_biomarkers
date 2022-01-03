@@ -21,6 +21,20 @@ parser$add_argument(
   help = "should messages be printed? One of: DEBUG, INFO, WARN, ERROR",
   default = "INFO"
 )
+parser$add_argument(
+  "--batch-correct",
+  "-X",
+  help = "Should integration be done using Seurat",
+  action = "store_true"
+)
+parser$add_argument(
+  "--batch-correct-method",
+  "-M",
+  "--bc-method",
+  help = "which batch correction method to use",
+  default = "CCA",
+  choices = c("CCA", "RPCA")
+)
 
 argv <- parser$parse_args()
 
@@ -31,6 +45,7 @@ suppressPackageStartupMessages({
   library(xfun)
   library(log4r)
   library(tidyverse)
+  library(glue)
 })
 
 logger <- logger(argv$verbose)
@@ -44,11 +59,14 @@ if (!dir.exists(here(output_path))) {
   fatal(logger, "Output directory does not exist")
 }
 
+bc_ext <- "no_bc"
+if (argv$batch_correct) bc_ext <- argv$batch_correct_method
+
 # read in data
 data_filename <- list.files(
   path = here(output_path, "cache/"),
   full.names = TRUE,
-  pattern = "^seurat_dimred_"
+  pattern = glue("^{bc_ext}_seurat_dimred_")
 )
 
 if (length(data_filename) > 1) fatal("There is more than one cached object")
@@ -60,7 +78,7 @@ seurat_down <- cache_rds(
   {
     subset(diagnosis, downsample = 100)
   },
-  file = paste0("CIBERSORT_ref_prep.rds"),
+  file = glue("{bc_ext}_CIBERSORT_ref_prep.rds"),
   dir = paste0(output_path, "/cache/")
 )
 
@@ -84,7 +102,7 @@ system("sed 1d cibersort_ref_input.txt > cibersort_ref_input2.txt")
 
 logical_val <- file.rename(
   here("cibersort_ref_input2.txt"),
-  here(output_path, "cibersort_ref_input.txt")
+  here(output_path, glue("{bc_ext}_cibersort_ref_input.txt"))
 )
 
 if (logical_val) debug(logger, "Moving reference succsessful!")

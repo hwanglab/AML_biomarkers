@@ -54,7 +54,10 @@ else:
     plots_path = argv.dir + "/plots/" + argv.dir
 
 random_string = binascii.b2a_hex(os.urandom(15))
-name_of_output_directory = "cibersort_results"
+bc_ext = "no_bc"
+
+
+name_of_output_directory = "{}_cibersort_results".format(bc_ext)
 
 logger.debug("Output Directory: {}/{}".format(output_path, name_of_output_directory))
 
@@ -84,10 +87,11 @@ logger.debug("The container command is: {}".format(" ".join(container_cmd)))
 logger.debug("Testing if Reference can be found")
 
 ref_filename = "CIBERSORTx_cell_type_sourceGEP.txt"
+ref_filename_end = "CIBERSORTx_cell_type_sourceGEP.txt"
 cibersort_cmd = ["--username", user_email, "--verbose", "FALSE", "--token", user_token, " --single_cell", "TRUE", "--outdir", "{}/{}".format(output_path, name_of_output_directory)]
 logger.debug("The CIBERSORTx command is: {}".format(" ".join(cibersort_cmd)))
 
-if os.path.isfile("{}/{}".format(output_path, ref_filename)):
+if os.path.isfile("{}/{}".format(output_path, ref_filename_end)):
     logger.info("Existing Reference Found")
 elif os.path.isfile("{}/cibersort_results/{}".format(output_path, ref_filename)):
     logger.info("Existing Reference Found")
@@ -112,8 +116,8 @@ else:
     subprocess.run(" ".join(ref_run_cmd), shell=True, stdout=subprocess_fun)
     logger.info("Reference Creation Finished")
     logger.info("Copying Reference to CIBERSORTx input directory")
-    source_path = "{}/cibersort_results/{}".format(output_path, ref_filename)
-    destination_path = "{}/{}".format(output_path, ref_filename)
+    source_path = "{}/{}".format(output_path, ref_filename)
+    destination_path = "{}/{}".format(output_path, ref_filename_end)
     shutil.copyfile(source_path, destination_path)
  
 lib.write_invocation(argv, output_path)

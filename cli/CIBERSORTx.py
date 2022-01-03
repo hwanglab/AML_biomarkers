@@ -21,6 +21,8 @@ flags = parser.add_argument_group("optional argumuments")
 flags.add_argument("-h", "--help", help = "show this help message and exit", action = "help")
 flags.add_argument("-v", "--verbose", help="should debug messages be printed", action="count", default=0)
 flags.add_argument("-D", "--debug", help="Should stdout be printed from CIBERSORTx", action="store_true")
+flags.add_argument("--batch-correct", help="Should the integrated data from seurat be used?", action="store_true")
+flags.add_argument("--batch-correct-method", "-M", help="which method from Seurat should be used?", choices=["CCA", "RPCA"])
 
 group = flags.add_mutually_exclusive_group()
 group.add_argument("-X", "--B-mode", help="Should B mode batch correction be applied?", action="store_true")
@@ -37,6 +39,11 @@ else:
 
 logger = logging.getLogger("CIBERSORTx: [{}]".format(name_to_use))
 
+if (argv.batch_correct): 
+    if (argv.batch_correct_method is None):
+        logger.critical("Batch correction method not set")
+        sys.exit(1)
+
 docker_singularity_cmd = "docker"
 try: 
     subprocess.run("docker", stderr=subprocess.DEVNULL)
@@ -49,7 +56,7 @@ if docker_singularity_cmd == "singularity":
         subprocess.run("singularity", stderr=subprocess.DEVNULL)
     except FileNotFoundError as e:
         logger.critical("Singularity Not Found")
-        raise RuntimeError("Docker or Singularity cannot be located")
+        sys.exit(1)
 
 if docker_singularity_cmd == "singularity":
     use_singularity = True
@@ -58,7 +65,8 @@ elif docker_singularity_cmd == "docker":
     use_singularity = False
     logger.info("Using Docker")
 else:
-    raise SyntaxError("Only Singularity and Docker are supported")
+    logger.critical("Only Singularity and Docker are supported")
+    sys.exit(1)
 
 # set up outputs
 if argv.dir == None:
@@ -112,20 +120,24 @@ else:
 
 logger.debug("Testing if Reference can be found")
 
+bc_ext = "no_bc"
+if argv.batch_correct:
+    bc_ext = argv.batch_correct_method
+
 ref_filename = "CIBERSORTx_cell_type_sourceGEP.txt"
 cibersort_cmd = ["--username", user_email, "--verbose", str(argv.debug).upper(), "--token", user_token, " --single_cell", "TRUE", "--outdir", "{}/{}".format(output_path, name_of_output_directory)]
 
 if os.path.isfile("{}/{}".format(output_path, ref_filename)):
     logger.info("Existing Reference Found")
-elif os.path.isfile("{}/cibersort_results/{}".format(output_path, ref_filename)):
+elif os.path.isfile("{}/{}_cibersort_results/{}".format(output_path, bc_ext, ref_filename)):
     logger.info("Existing Reference Found")
     logger.info("Copying Reference to CIBERSORTx input directory")
-    source_path = "{}/cibersort_results/{}".format(output_path, ref_filename)
+    source_path = "{}/{}_cibersort_results/{}".format(output_path, bc_ext, ref_filename)
     destination_path = "{}/{}".format(output_path, ref_filename)
     shutil.copyfile(source_path, destination_path)
 else:
     logger.critical("Reference Not Found. Please run CIBERSORTx_ref.py")
-    raise RuntimeError("Reference Not Found")
+    sys.exit(1)
     
 def run_cmd(mixture):
     specific_args = ["--sigmatrix", ref_filename, "--mixture", mixture, "--label", mixture]
