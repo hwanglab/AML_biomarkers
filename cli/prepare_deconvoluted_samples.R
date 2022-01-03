@@ -4,7 +4,7 @@ library(argparse)
 
 # parse args
 parser <- ArgumentParser("Prepare Clinical Data")
-group <- parser$add_mutally_exclusive_group()
+group <- parser$add_mutually_exclusive_group()
 parser$add_argument(
   "--dir",
   "-d",
@@ -28,6 +28,19 @@ parser$add_argument(
   help = "which model should be used?",
   default = "CIBERSORTx"
 )
+parser$add_argument(
+  "--batch-correct",
+  help = "Should integration be done using Seurat",
+  action = "store_true"
+)
+parser$add_argument(
+  "--batch-correct-method",
+  "-M",
+  "--bc-method",
+  help = "which batch correction method to use",
+  default = "CCA",
+  choices = c("CCA", "RPCA")
+)
 group$add_argument(
   "--B-mode",
   "-X",
@@ -48,6 +61,8 @@ suppressPackageStartupMessages({
   library(here)
   library(log4r)
   library(tidyverse)
+  library(glue)
+  library(scorecard)
 })
 
 if (argv$dir == "") {
@@ -81,7 +96,10 @@ if (argv$model == "CIBERSORTx") {
     cibersort_results_dir <- "cibersort_results"
   }
 
-  data_path <- paste0(output_path, "/", cibersort_results_dir, "/", data_filename)
+  bc_ext <- "no_bc"
+  if (argv$batch_correct) bc_ext <- argv$batch_correct_method
+
+  data_path <- glue("{output_path}/{bc_ext}_{cibersort_results_dir}/{data_filename}")
   debug(logger, paste0("Example Path: ", data_path[[1]]))
 
   deconvoluted <- data_path %>%
@@ -127,7 +145,8 @@ tcga_deconvoluted <- tcga_deconvoluted %>%
   left_join(tcga_ann2, by = c("Mixture" = "Case ID")) %>%
   filter(flt3_status == "Positive")
 
-
+flt3_target <- filter(target_deconvoluted, `FLT3/ITD positive?` == "yes")
+split <- split_df(flt3_target, y = "Event Free Survival Time in Days")
 
 debug(logger, "Joining BeatAML clinical data and deconvolution results")
 beat_aml_decon <- beat_aml_decon %>%
@@ -135,7 +154,8 @@ beat_aml_decon <- beat_aml_decon %>%
   filter(FLT3_ITD_CONSENSUS_CALL == "Positive")
 debug(logger, "Filtering data and saving results")
 deconvoluted <- list(
-  FLT3 = filter(target_deconvoluted, `FLT3/ITD positive?` == "yes"),
+  TRAIN = split$train,
+  FLT3 = split$test,
   NEG = filter(
     target_deconvoluted,
     `FLT3/ITD positive?` == "no",
@@ -146,7 +166,7 @@ deconvoluted <- list(
   TCGA = tcga_deconvoluted
 )
 
-saveRDS(deconvoluted, here(output_path, "cache/clinical_deconvoluted.rds"))
+saveRDS(deconvoluted, here(output_path, glue("cache/{bc_ext}_clinical_deconvoluted.rds")))
 
 source(here("lib/WriteInvocation.R"))
 WriteInvocation(argv, output_path = here(output_path, "invocation"))

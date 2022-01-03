@@ -62,7 +62,6 @@ suppressPackageStartupMessages({
   library(here)
   library(future)
   library(Seurat)
-  suppressWarnings(library(rsinglecell))
   library(pheatmap)
   library(readxl)
   library(tidyverse)
@@ -103,6 +102,7 @@ debug(logger, paste0("Importing Data from: ", data_filename))
 seurat <- readRDS(data_filename)
 
 # set plan
+if (argv$cores == 0) argv$cores <- availableCores()
 if (argv$cores == 1) {
   plan("sequential")
 } else {
@@ -244,6 +244,23 @@ if (!file.exists(here(output_path, "cluster_differential_expression.tsv"))) {
   info(logger, "Differential Expression already done")
   markers <- read_tsv(
     file = here(output_path, "cluster_differential_expression.tsv"),
+    col_types = cols()
+  )
+}
+
+if (!file.exists(here(output_path, "pvf_differential_expression.tsv"))) {
+  info(logger, "Doing Differential Expression")
+  seurat2 <- seurat
+  Idents(seurat) <- "prognosis"
+  markers2 <- FindAllMarkers(seurat2, test.use = "MAST")
+  write_tsv(
+    markers2,
+    file = here(output_path, "pvf_differential_expression.tsv")
+  )
+} else {
+  info(logger, "Differential Expression already done")
+  markers2 <- read_tsv(
+    file = here(output_path, "pvf_differential_expression.tsv"),
     col_types = cols()
   )
 }

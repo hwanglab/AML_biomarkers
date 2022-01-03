@@ -49,6 +49,14 @@ parser$add_argument(
   help = "which dataset to use",
   required = TRUE
 )
+parser$add_argument(
+  "--batch-correct-method",
+  "-M",
+  "--bc-method",
+  help = "which batch correction method to use",
+  default = "CCA",
+  choices = c("CCA", "RPCA")
+)
 argv <- parser$parse_args()
 suppressPackageStartupMessages({
   library(org.Hs.eg.db)
@@ -71,14 +79,14 @@ if (argv$dir == "") {
   plots_path <- paste0(parser$run_dir, "/plots/", argv$id)
 }
 
-bc_ext <- ""
-if (argv$batch_correct) bc_ext <- "bc_"
+bc_ext <- "no_bc"
+if (argv$batch_correct) bc_ext <- argv$batch_correct_method
 
 if (argv$batch_correct) {
   data_filename <- list.files(
     path = here(output_path, "cache/"),
     full.names = TRUE,
-    pattern = "^seurat_integrated_bc_"
+    pattern = glue("^seurat_integrated_{argv$batch_correct_method}_")
   )
 } else {
   data_filename <- list.files(
@@ -99,7 +107,7 @@ if (length(data_filename) > 1) {
 # Use genes as input to Heatmap
 
 debug(logger, "Reading in GSVA results")
-gsea_res <- read_tsv(glue("{output_path}/{bc_ext}GSEA.tsv"), col_types = cols())
+gsea_res <- read_tsv(glue("{output_path}/{bc_ext}_GSEA.tsv"), col_types = cols())
 
 gsea_res <- gsea_res %>% filter(ID == argv$gene_set_name)
 

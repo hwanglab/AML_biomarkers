@@ -33,6 +33,14 @@ parser$add_argument(
   help = "Should intetegraed data be used from Seurat",
   action = "store_true"
 )
+parser$add_argument(
+  "--batch-correct-method",
+  "-M",
+  "--bc-method",
+  help = "which batch correction method to use",
+  default = "CCA",
+  choices = c("CCA", "RPCA")
+)
 
 argv <- parser$parse_args()
 
@@ -65,8 +73,8 @@ if (argv$dir == "") {
   plots_path <- paste0(parser$run_dir, "/plots/", argv$id)
 }
 
-bc_ext <- ""
-if (argv$batch_correct) bc_ext <- "bc_"
+bc_ext <- "no_bc"
+if (argv$batch_correct) bc_ext <- argv$batch_correct_method
 
 if (!dir.exists(here(plots_path))) {
   debug(logger, "Plots directory is being created")
@@ -75,11 +83,18 @@ if (!dir.exists(here(plots_path))) {
 
 if (!dir.exists(here(output_path))) {
   fatal(logger, "Output directory does not exist")
-  quit()
+  quit(status = 1)
 }
 
+debug(logger, "Reading cluster differential expression")
 markers <- read_tsv(
-  here(output_path, glue("{bc_ext}cluster_split_DE_master.tsv")),
+  here(output_path, glue("cluster_differential_expression.tsv")),
+  col_types = cols()
+)
+
+debug(logger, "Reading PvF differential expression")
+markers2 <- read_tsv(
+  here(output_path, glue("pvf_differential_expression.tsv")),
   col_types = cols()
 )
 
@@ -93,6 +108,7 @@ MakeGeneList <- function(df, entrez = FALSE) {
   return(gene_list)
 }
 
+debug(logger, "Filtering and arranging data")
 suppressMessages({
   markers_fil <- filter(markers, is.finite(avg_log2FC)) %>%
     group_by(cluster) %>%
@@ -100,6 +116,11 @@ suppressMessages({
     mutate(entrez = mapIds(org.Hs.eg.db, gene, "ENTREZID", "SYMBOL"))
 })
 
+markers2 <- filter(markers, is.finite(avg_log2FC)) %>%
+  arrange(desc(avg_log2FC)) %>%
+  mutate(entrez = mapIds(org.Hs.eg.db, gene, "ENTREZID", "SYMBOL"))
+
+debug(logger, "Loading MSigDB")
 msigdb <- list(
   HALLMARK = "msigdb/gmt/h.all.v7.4.entrez.gmt",
   ONCO = "msigdb/gmt/c6.all.v7.4.entrez.gmt",
@@ -107,7 +128,10 @@ msigdb <- list(
 )
 msigdb <- map(msigdb, read.gmt)
 
-markers_fil_nest <- nest(markers_fil)
+debug(logger, "Merging differential expressions")
+markers_fil_nest <- nest(markers_fil) %>% ungroup()
+markers2_tibble <- tribble(~cluster, ~data, "PvF", markers2)
+markers_fil_nest <- full_join(markers_fil_nest, markers2_tibble)
 
 plan("multicore", workers = argv$cores)
 furrr_options <- furrr_options(seed = 10000000, stdout = FALSE)
@@ -117,6 +141,8 @@ markers_fil_nest <- mutate(
   gene_list = map(data, MakeGeneList),
   gene_list_entrez = map(data, MakeGeneList, entrez = TRUE)
 )
+
+debug(logger, "Gene List Made. Preparing Vectors.")
 
 gene_list <- markers_fil_nest$gene_list
 names(gene_list) <- markers_fil_nest$cluster
@@ -130,6 +156,13 @@ p_adjust_method <- "fdr"
 options(mc.cores = 1L) # disable BiocParallel in favor of futureverse
 suppressMessages({
   suppressWarnings({
+    fake <- gseGO(
+      geneList = gene_list[[1]], 
+      OrgDb = org.Hs.eg.db, 
+      ont = "BP", 
+      keyType = "SYMBOL", 
+      verbose = FALSE
+      )
     res[["GO"]] <- future_map(
       gene_list,
       ~ gseGO(
@@ -156,6 +189,13 @@ suppressMessages({
       .options = furrr_options
     )
     debug(logger, "    MKEGG Done")
+    fake <- gseKEGG(
+        geneList = gene_list_entrez[[1]],
+        organism = "hsa",
+        eps = 0,
+        verbose = FALSE,
+        pAdjustMethod = p_adjust_method
+      )
     res[["KEGG"]] <- future_map(
       gene_list_entrez,
       ~ gseKEGG(
@@ -168,6 +208,13 @@ suppressMessages({
       .options = furrr_options
     )
     debug(logger, "    KEGG Done")
+
+    fake <- gseDO(
+      geneList = gene_list_entrez[[1]], 
+      pAdjustMethod = p_adjust_method,
+      verbose = FALSE
+      )
+
     res[["DO"]] <- future_map(
       gene_list_entrez,
       ~ gseDO(
@@ -202,7 +249,7 @@ res <- append(res, msigdb_res)
 
 plot_res <- transpose(res)
 plot_res <- map(plot_res, ~ discard(.x, ~ !nrow(.x@result)))
-dir.create(glue("{plots_path}/{bc_ext}GSEA"), showWarnings = FALSE)
+dir.create(glue("{plots_path}/{bc_ext}_GSEA"), showWarnings = FALSE)
 
 for (cluster in names(plot_res)) {
   plots <- list()
@@ -223,7 +270,7 @@ for (cluster in names(plot_res)) {
       ) +
       plot_layout(widths = c(5, 2))
   }
-  pdf(glue("{plots_path}/{bc_ext}GSEA/{cluster}.pdf"), width = 35, height = 22)
+  pdf(glue("{plots_path}/{bc_ext}_GSEA/{cluster}.pdf"), width = 35, height = 22)
   print(plots)
   graphics.off()
 }
@@ -233,7 +280,7 @@ plot_res %>%
   map_df("result", .id = "id") %>%
   separate(id, into = c("cluster", "gene_set"), sep = "\\.") %>%
   separate(cluster, into = c("prognosis", "cluster")) %>%
-  write_tsv(glue("{output_path}/{bc_ext}GSEA.tsv"))
+  write_tsv(glue("{output_path}/{bc_ext}_GSEA.tsv"))
 
 source(here("lib/WriteInvocation.R"))
 WriteInvocation(argv, output_path = here(output_path, "invocation"))

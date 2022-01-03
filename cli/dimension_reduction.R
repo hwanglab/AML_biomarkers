@@ -157,6 +157,20 @@ FindClusterFreq <- function(object, metadata, cluster, sort_by = NULL) {
 
 WilcoxTestSafe <- purrr::safely(wilcox.test, otherwise = list(p.value = NA))
 
+CalculatePValues.chi <- function(x) {
+    if (is.matrix(x$obs)) {
+        otmp <- apply(x$obs, 1, sum)
+        etmp <- apply(x$exp, 1, sum)
+    }
+    else {
+        otmp <- x$obs
+        etmp <- x$exp
+    }
+    df <- (sum(1 * (etmp > 0))) - 1
+    pval <- pchisq(x$chisq, df, lower.tail = FALSE)
+    return(pval)
+}
+
 ####### End Function Definitions ###############################################
 
 if (argv$column_names) {
@@ -192,7 +206,7 @@ suppressPackageStartupMessages({
   library(Seurat)
   library(SeuratDisk)
   library(here)
-  suppressWarnings(library(rsinglecell))
+
   library(readxl)
   library(biomaRt)
   library(survival)
@@ -228,6 +242,10 @@ dir.create(here(output_path), showWarnings = FALSE)
 dir.create(here(plots_path), showWarnings = FALSE)
 
 if (argv$invalidate) info("The cache will be invalidated")
+
+bc_ext <- "no_bc"
+if (argv$batch_correct) bc_ext <- argv$batch_correct_method
+
 # set plan
 if (argv$cores == 0) argv$cores <- availableCores()[[1]]
 
@@ -268,7 +286,7 @@ diagnosis <- cache_rds(
     assays_to_print <- glue_collapse(assays_to_load, sep = ", ", last = " and ")
     info(logger, glue("The assay(s) being loaded is/are {assays_to_print}"))
     seurat <- LoadH5Seurat(
-      file.path(Sys.getenv("AML_DATA"), "05_seurat_annotated.h5Seurat"),
+      file.path("/mnt", "ess", "clonal_evolution", "preprocessing", "outs", "05_seurat_annotated.h5Seurat"),
       assays = assays_to_load,
       verbose = FALSE
     )
@@ -277,7 +295,8 @@ diagnosis <- cache_rds(
     MatchValuesForSubset <- function(val, col) {
       rownames(filter(seurat[[]], .data[[col]] == val))
     }
-
+    debug(logger, glue("The class of cols is {class(cols)}"))
+    debug(logger, glue("The class of vals is {class(vals)}"))
     res <- map(argv$cols, .f = function(col, vals) {
       unique(unlist(lapply(vals, MatchValuesForSubset, col)))
     }, argv$vals)
@@ -295,7 +314,7 @@ diagnosis <- cache_rds(
   rerun = argv$invalidate,
   hash = list(
     file.info(
-      file.path(Sys.getenv("AML_DATA"), "05_seurat_annotated.h5Seurat")
+      file.path("/mnt", "ess", "clonal_evolution", "preprocessing", "outs", "05_seurat_annotated.h5Seurat")
     ),
     argv$vals,
     argv$cols
@@ -318,21 +337,15 @@ if (argv$batch_correct) {
       )
       object_list
     },
-    file = "seurat_normalized_bc.rds",
+    file = "seurat_normalized.rds",
     dir = paste0(output_path, "/cache/"),
     rerun = argv$invalidate,
     hash = list(diagnosis)
   )
 
-  SetPlan()
+SetPlan()
 
-  bc_filename <- glue("seurat_integrated_{argv$batch_correct_method}.rds")
-
-
-
-features <- SelectIntegrationFeatures(object.list = ifnb.list, nfeatures = 3000)
-ifnb.list <- PrepSCTIntegration(object.list = ifnb.list, anchor.features = features)
-ifnb.list <- lapply(X = ifnb.list, FUN = RunPCA, features = features)
+bc_filename <- glue("seurat_integrated_{argv$batch_correct_method}.rds")
 
 info(logger, glue("Preparing to integrate using {argv$batch_correct_method"))
 
@@ -395,7 +408,7 @@ diagnosis <- cache_rds(
     diagnosis[["clusters"]] <- Idents(diagnosis)
     diagnosis
   },
-  file = "seurat_dimred.rds",
+  file = glue("{bc_ext}_seurat_dimred.rds"),
   dir = paste0(output_path, "/cache/"),
   rerun = argv$invalidate,
   hash = list(diagnosis, argv$batch_correct)

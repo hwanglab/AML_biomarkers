@@ -34,24 +34,6 @@ parser$add_argument(
   action = "store_true"
 )
 parser$add_argument(
-  "--split",
-  "-S",
-  help = "should a saved file be read in to split patients?",
-  action = "store_true"
-)
-parser$add_argument(
-  "--training-data",
-  "-t",
-  help = "what should be used to train on? (FLT3, CEBPA, NEG, BeatAML, TCGA)",
-  default = "FLT3"
-)
-parser$add_argument(
-  "--training-split",
-  "-T",
-  help = "should the training data be split? 0 = no split",
-  default = 0.7
-)
-parser$add_argument(
   "--training-axis",
   "-a",
   help = "What time axis to use for training",
@@ -68,8 +50,21 @@ parser$add_argument(
   help = "Should training-vars be excluded instead?",
   action = "store_true"
 )
+parser$add_argument(
+  "--batch-correct",
+  help = "Should integration be done using Seurat",
+  action = "store_true"
+)
+parser$add_argument(
+  "--batch-correct-method",
+  "-M",
+  "--bc-method",
+  help = "which batch correction method to use",
+  default = "CCA",
+  choices = c("CCA", "RPCA")
+)
 
-argv <- parser$parse_args()
+argv <- parser$parse_args(c("-i", "flt3_cebpa_stem", "-I", "EFS_with_TCGA_EFS", "-EV", 'c(matches("^Year|^Age|^Overall"), where(is_character))', "-v", "DEBUG"))
 
 # load more libraries
 suppressPackageStartupMessages({
@@ -79,10 +74,206 @@ suppressPackageStartupMessages({
   library(survminer)
   library(scorecard)
   library(glmnet)
-  suppressWarnings(library(rsinglecell))
   library(tidyverse)
+  library(glue)
 })
 
+
+#### Make Functions ------------------------------------------------------------
+
+#' Check the existence of a package
+#
+#' @param ... Package names
+#' @param error If true, throw an error if the package doesn't exist
+#
+#' @return Invisibly returns boolean denoting if the package is installed
+#' 
+#' @note Taken from Seurat
+#
+PackageCheck <- function(..., error = TRUE) {
+  pkgs <- unlist(x = c(...), use.names = FALSE)
+  package.installed <- vapply(
+    X = pkgs,
+    FUN = requireNamespace,
+    FUN.VALUE = logical(length = 1L),
+    quietly = TRUE
+  )
+  if (error && any(!package.installed)) {
+    stop(
+      "Cannot find the following packages: ",
+      paste(pkgs[!package.installed], collapse = ', '),
+      ". Please install"
+    )
+  }
+  invisible(x = package.installed)
+}
+
+#' Not in operator
+#' 
+#' @export
+#' @rdname not_in
+#' @name not_in
+#' 
+#' @param lhs stuff
+#' @param rhs stuff
+#' 
+
+`%!in%` <- function(lhs, rhs) {
+  match(lhs, rhs, nomatch = 0) == 0
+}
+
+#' Run a LASSO model
+#' 
+#' @param df a data.frame
+#' @param outcome <tidyselect> a column in df that has the continuous outcome variable
+#' @param exclude <tidyselect> a column (or vector of columns) in df to exclude in the lasso model
+#' @param include <tidyselect> a column (or vector of columns) in df to include in the lasso model
+#' 
+#' @return a \code{glmnet} object
+#' 
+#' @importFrom rlang enquo set_names abort
+#' @importFrom dplyr select pull
+#' @importFrom tibble as_tibble
+#' 
+#' @export
+#' 
+#' @examples {
+#' \dontrun{
+#' DoLassoModel(target_split$train, `Event Free Survival Time in Days`)
+#' 
+#' # one exclusion column
+#' target_model <- DoLassoModel(target_split$train,
+#'                              outcome = `Event Free Survival Time in Days`,
+#'                              exclude = `First Event`)
+#' # multiple exclusion columns
+#' DoLassoModel(target_split$train, 
+#'              outcome = `Event Free Survival Time in Days`,
+#'              exclude = c(`First Event`, AAR2, `FLT3/ITD allelic ratio`))
+#' DoLassoModel(lasso_data,
+#'              outcome = `Event Free Survival Time in Days`,
+#'              exclude = c(`P-value`:RMSE, where(is_character)))
+#'              }
+#' }
+DoLassoModel <- function(df, outcome, exclude = NULL, include = NULL) {
+  PackageCheck("glmnet")
+  
+  o <- rlang::enquo(outcome)
+  e <- rlang::enquo(exclude)
+  i <- rlang::enquo(include)
+  df <- tibble::as_tibble(df)
+  
+  if (!rlang::quo_is_null(i) & !rlang::quo_is_null(e)) {
+    rlang::abort("Both exclude and include cannot be provided")
+  }
+  
+  NotNumeric <- function(data) {
+    if (any(apply(data, 2, class) != "numeric")) {
+      rlang::abort("Some columns are not numeric")
+    }
+  }
+  
+  # Subset the data based on include and exclude vars
+  if (rlang::quo_is_null(e) & rlang::quo_is_null(i)) {
+    NotNumeric(df)
+    data <- dplyr::select(df, -!!o)
+    response <- dplyr::pull(df, !!o)
+    mat <- as.matrix(data)
+    }
+  if (!rlang::quo_is_null(i)) {
+    # This is a way to do this
+    data <- dplyr::select(df, !!i)
+    cols <- tidyselect::eval_select(o, data, strict = FALSE) # gets column names
+    data <- dplyr::select(data, -all_of(cols)) # removes those columns
+    NotNumeric(data)
+    response <- dplyr::pull(df, !!o)
+    mat <- as.matrix(data)
+    } 
+  if (!rlang::quo_is_null(e)) {
+    cols <- tidyselect::eval_select(e, df)
+    good_cols <- colnames(df)[colnames(df) %!in% names(cols)]
+    selected <- rlang::set_names(df[-cols], good_cols)
+    selected <- ggplot2::remove_missing(selected)
+    NotNumeric(selected)
+    data <- dplyr::select(selected, -!!o)
+    response <- dplyr::pull(selected, !!o)
+    mat <- as.matrix(data)
+  }
+  
+  if (length(response) != nrow(mat)) rlang::abort("Number of observations does not match!")
+  
+  init_mod <- glmnet::cv.glmnet(mat, response)
+  fin_mod <- glmnet::glmnet(mat, response, lambda = init_mod$lambda.min)
+  return(fin_mod)
+}
+
+#' Calcualte scores using coefficents from a LASSO model
+#' 
+#' @param x a data.frame with colnames matching LASSO model
+#' @param coef coeficents from a model
+#' 
+#' @return vector of scores
+#' @export
+#' 
+#' @importFrom rlang warn
+#' @importFrom purrr discard reduce
+#' 
+#' @examples {
+#' \dontrun{
+#' # Using Base R
+#' 
+#' df$score <- UseLassoModelCoefs(df, coef(LASSO_model))
+#' 
+#' # Using dplyr
+#' df %>%
+#'    mutate(score = UseLASSOModelCoefs(cur_data(), coef(LASSO_model))
+#' }
+#' }
+UseLASSOModelCoefs <- function(x, coef) {
+  mod2 <- coef[-1, ] %>% as.matrix() %>% as.data.frame()
+  w_vec <- list(0)
+  mod2 <- mod2[which(mod2[1] != 0), ,drop = FALSE]
+  
+  missing_features <- mod2[which(rownames(mod2) %!in% colnames(x)), , drop = FALSE] %>% rownames()
+  n_features <- nrow(mod2)
+  n_present <- n_features - length(missing_features)
+  
+  if (n_present == 0) rlang::abort(message = "There are no features matching the lasso model present!")
+  
+  if (length(missing_features) >= 1)  {
+    # build message
+    mfeat <- "The following features are missing in the data: "
+    feats <- paste(missing_features, collapse = ", ")
+    pfeat <- paste0("Only ",
+                    round(n_present / n_features * 100, digits = 1),
+                    "% features present.")
+    rlang::warn(message = c(mfeat, feats, pfeat))
+  }
+  
+  for (i in seq_along(rownames(mod2))) {
+    col <- rownames(mod2)[i]
+    vec <- x[[col]]
+    w <- mod2[i, 1]
+    w_vec[[i]] <- vec * w
+  }
+  w_vec <- purrr::discard(w_vec, is_empty)
+  w_len <- length(w_vec)
+  
+  if (w_len == 1) {
+    res <- w_vec[[1]]
+  } else {
+    res <- w_vec %>% purrr::reduce(rbind) %>% colSums()
+  }
+  return(res + coef[1, ])
+}
+#' Calculate P values from a survival analysis
+#' 
+#' @param x result from either a chi square or cox regression
+#' 
+#' @return p value
+#' @rdname pval-calc
+#' @export
+
+##### End Functions ------------------------------------------------------------
 logger <- logger(threshold = argv$verbose)
 
 if (argv$dir == "") {
@@ -93,7 +284,10 @@ if (argv$dir == "") {
   plots_path <- paste0(parser$run_dir, "/plots/", argv$id)
 }
 
-data_filename <- here(output_path, "cache/clinical_deconvoluted.rds")
+  bc_ext <- "no_bc"
+  if (argv$batch_correct) bc_ext <- argv$batch_correct_method
+  
+data_filename <- here(output_path, glue("cache/{bc_ext}_clinical_deconvoluted.rds") )
 
 if (argv$test_id == "incremental") {
   dir_names <- list.dirs(here(output_path), full.names = FALSE)
@@ -125,9 +319,16 @@ if (argv$test_id == "incremental") {
   dir.create(plots_path, recursive = TRUE, showWarnings = FALSE)
 } else {
   output_path <- here(output_path, argv$test_id)
+  
+  if (dir.exists(output_path)) {
+    info(logger, "The specified test_id has been used. Padding with date")
+    time <- Sys.time()
+    argv$test_id <- glue("{argv$test_id}/{time}")
+    output_path <- here(output_path, argv$test_id)
+  }
   plots_path <- here(plots_path, argv$test_id)
   info(logger, c("Using ", argv$test_id, " as the test id"))
-  dir.create(output_path, showWarnings = FALSE)
+  dir.create(output_path, showWarnings = FALSE, recursive = TRUE)
   dir.create(plots_path, recursive = TRUE, showWarnings = FALSE)
 }
 
@@ -145,57 +346,11 @@ data <- tryCatch(
   }
 )
 
-debug(logger, "Splitting Data")
-if (argv$split &
-  !file.exists(
-    here("outs", argv$id, "cache", paste0(argv$training_data, "_rownames.rds"))
-  )
-) {
-  warn(logger, "The argument split was used, but a cached object was not found. Ignoring option")
-  argv$split <- FALSE
-}
-
-if (argv$split) {
-  debug("Reading files for split")
-  rn_split <- readRDS(here("outs", argv$id, "cache", paste0(argv$training_data, "_rownames.rds")))
-  split <- map(rn_split, ~ data[[argv$training_data]][
-    data[[argv$training_data]][[1]] %in% .x,
-  ])
-  names(split) <- c("train", "test")
-} else {
-  debug(
-    logger,
-    paste0(
-      "Using ratios: ",
-      argv$training_split,
-      " and ",
-      1 - argv$training_split
-    )
-  )
-  split <- split_df(
-    data[[argv$training_data]],
-    y = argv$training_axis,
-    ratios = c(argv$training_split, 1 - argv$training_split)
-  )
-  saveRDS(
-    map(split, ~ .x[[1]]),
-    file = here("outs", argv$id, "cache", paste0(argv$training_data, "_rownames.rds"))
-  )
-}
-
 debug(logger, "Preparing Data for training")
-
-if (argv$training_split != 0) {
-  training <- split$train
-  data[[argv$training_data]] <- NULL
-  data[[paste0(argv$training_data, ": Training")]] <- split$training
-  data[[paste0(argv$training_data, ": Test")]] <- split$test
-} else {
-  training <- data[[argv$training_data]]
-  data[[argv$training_data]] <- NULL
-}
-
 debug(logger, paste0("Data Names: ", paste0(names(data), collapse = ", ")))
+
+training <- data[["TRAIN"]]
+data[["TRAIN"]] <- NULL
 
 if (argv$sig_clusters) {
   sig_cluster_file <- here(output_path, "cache/survival_models.rds")
@@ -236,7 +391,7 @@ if (argv$exclude) {
     argv$training_axis,
     "`, include = ",
     argv$training_vars,
-    ")",
+    ")\n",
     file = path,
     sep = ""
   )
@@ -251,6 +406,7 @@ suppressWarnings({
 lasso_model_red <- coef(lasso_model)
 
 lasso_model_red %>%
+  as.matrix() %>%
   as.data.frame() %>%
   mutate(rownames = rownames(lasso_model_red), .before = 1) %>%
   write_tsv(here(output_path, "lasso_model_coefs.tsv"))
@@ -269,6 +425,7 @@ times <- c(
   "Event Free Survival Time in Days",
   "Overall Survival Time in Days",
   "days_to_death",
+  "days_to_recurrance",
   "OS_DAYS"
 )
 event_col <- c("First Event" = "relapse", "vital_status" = "Dead", "status" = 1)
@@ -284,6 +441,61 @@ results$plots %>% walk(print)
 graphics.off()
 
 write_csv(results$stats, file = here(output_path, "survival.csv"))
+
+info(logger, "Mulitvariate analysis on TARGET")
+
+data <- map2(data, results$scores, ~ mutate(.x, score = .y))
+target_data <- data[c("FLT3", "NEG", "CEBPA")]
+
+SetupTARGETData <- function(df) {
+  res <- df %>%
+    mutate(
+      event = if_else(`First Event` == "relapse", 1, 0),
+      score_bin_median = if_else(score >= median(score), "LS-HIGH", "LS-LOW"),
+      flt3_ratio = if_else(`FLT3/ITD allelic ratio` > 0.4, "AR+", "AR-"),
+      MRD_end = if_else(`MRD at end of course 1` > 5, "MRD+", "MRD-")
+    )
+  
+  mutation_cols <- c("WT1 mutation", "c-Kit Mutation Exon 8", "c-Kit Mutation Exon 17", "NPM mutation", "CEBPA mutation", "FLT3 PM", "MRD_end", "MLL")
+
+  res <- df %>%
+    mutate(
+      across(
+        .cols = mutation_cols,
+        .fns = ~ if_else(.x %in% c("not done", "unknown"), NA_character_, .x)
+      )
+    ) %>%
+    mutate(
+      `Cytogenetic Complexity` = if_else(`Cytogenetic Complexity` %in% c("na", "n/a"), NA_character_, `Cytogenetic Complexity`)
+    )
+  return(res)
+}
+
+target_data <- map(target_data, SetupTARGETData)
+
+surv_form <- Surv(`Event Free Survival Time in Days`, event) ~ score_bin_median + flt3_ratio + MRD_end + `WT1 mutation`
+
+palette <- c("#E7B800", "#2E9FDF")
+fits <- coxph(surv_form, data = target_data$`FLT3`)
+
+pdf(glue("{plots_path}/forest_plot.pdf"))
+set <- "FLT3"
+  fits <- coxph(surv_form, data = target_data[[set]])
+  ggforest(
+    fits,
+    data = target_data[[set]], 
+    main = glue("Hazard Ratios: {set}")
+    )
+
+graphics.off()
+
+
+
+ggforest(fits2, data = data$FLT3)
+
+
+
+
 
 source(here("lib/WriteInvocation.R"))
 WriteInvocation(argv, output_path = here(output_path, "invocation"))
