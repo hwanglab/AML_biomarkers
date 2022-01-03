@@ -82,12 +82,6 @@
       "RemoteSha": "a88deb0f39bd92d94f0d9c6569ca13a13e8c1968",
       "Hash": "81a095b1075384d943aa059f6e7c5917"
     },
-    "BiocNeighbors": {
-      "Package": "BiocNeighbors",
-      "Version": "1.10.0",
-      "Source": "Bioconductor",
-      "Hash": "41adf63d6241d72adc0ac4b6d458279b"
-    },
     "BiocParallel": {
       "Package": "BiocParallel",
       "Version": "1.26.0",
@@ -394,25 +388,12 @@
       "Repository": "CRAN",
       "Hash": "ddfa72a87fdf4c80466a20818be91d00"
     },
-    "RcppHNSW": {
-      "Package": "RcppHNSW",
-      "Version": "0.3.0",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "ce584c040a9cfa786ffb41f938f5ed19"
-    },
     "RcppProgress": {
       "Package": "RcppProgress",
       "Version": "0.4.2",
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "1c0aa18b97e6aaa17f93b8b866c0ace5"
-    },
-    "ResidualMatrix": {
-      "Package": "ResidualMatrix",
-      "Version": "1.2.0",
-      "Source": "Bioconductor",
-      "Hash": "67303d7ae329cb29d09e9e51fc0fa8de"
     },
     "Rhdf5lib": {
       "Package": "Rhdf5lib",
@@ -504,13 +485,6 @@
       "Version": "1.22.0",
       "Source": "Bioconductor",
       "Hash": "74391cb9cefb4bcdffc38778fea7ecf3"
-    },
-    "VennDiagram": {
-      "Package": "VennDiagram",
-      "Version": "1.6.20",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "ffff3996100ae22360096dd6a3436b0d"
     },
     "XML": {
       "Package": "XML",
@@ -607,12 +581,6 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "0c54cf3a08cc0e550fbd64ad33166143"
-    },
-    "batchelor": {
-      "Package": "batchelor",
-      "Version": "1.8.0",
-      "Source": "Bioconductor",
-      "Hash": "449f309aea48c53a8b36b64429cb12ed"
     },
     "batchtools": {
       "Package": "batchtools",
@@ -1238,6 +1206,13 @@
       "Repository": "CRAN",
       "Hash": "e274c8e45bac263256ae345e867527df"
     },
+    "gghighlight": {
+      "Package": "gghighlight",
+      "Version": "0.3.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "61128bb6f044710e5e0b164833e46533"
+    },
     "ggnewscale": {
       "Package": "ggnewscale",
       "Version": "0.4.5",
@@ -1319,8 +1294,9 @@
       "Package": "ggtree",
       "Version": "3.0.4",
       "Source": "Bioconductor",
+      "RemoteType": "bioconductor",
       "Remotes": "GuangchuangYu/treeio",
-      "Hash": "2df101a189ad4a01a9f6cdb5e0957d53"
+      "Hash": "7a79053d8f8e5cb79f2fbd150ddd0a07"
     },
     "ggupset": {
       "Package": "ggupset",
@@ -2105,13 +2081,6 @@
       "Source": "Bioconductor",
       "Hash": "32b1179c2cdc755c3345e840abbf6f61"
     },
-    "rJava": {
-      "Package": "rJava",
-      "Version": "1.0-4",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "0cd1ee479ba887170411af6d81705003"
-    },
     "ragg": {
       "Package": "ragg",
       "Version": "1.1.2",
@@ -2263,18 +2232,6 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "249d8cd1e74a8f6a26194a91b47f21d1"
-    },
-    "rsinglecell": {
-      "Package": "rsinglecell",
-      "Version": "0.0.0.6",
-      "Source": "GitHub",
-      "RemoteType": "github",
-      "RemoteHost": "api.github.com",
-      "RemoteRepo": "rsinglecell",
-      "RemoteUsername": "rschauner",
-      "RemoteRef": "HEAD",
-      "RemoteSha": "24e994dfcaff2a15b4a59f369745d11cf44ee6ff",
-      "Hash": "48eab6fa8922e2093b45488849ea80e7"
     },
     "rstatix": {
       "Package": "rstatix",
@@ -2500,10 +2457,10 @@
     },
     "styler": {
       "Package": "styler",
-      "Version": "1.4.1",
+      "Version": "1.6.2",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "2ec6308547ffe73208cef3ef3766fc33"
+      "Hash": "d9e85c794c5a723aabed32a49926186a"
     },
     "survMisc": {
       "Package": "survMisc",
@@ -2612,15 +2569,15 @@
     },
     "treeio": {
       "Package": "treeio",
-      "Version": "1.17.2",
+      "Version": "1.19.1",
       "Source": "GitHub",
       "RemoteType": "github",
       "RemoteHost": "api.github.com",
       "RemoteUsername": "GuangchuangYu",
       "RemoteRepo": "treeio",
       "RemoteRef": "master",
-      "RemoteSha": "1e16179fbc02967dcab573544ad81fb01858a168",
-      "Hash": "d5825f88f67a844481fb08ce16cedce9"
+      "RemoteSha": "9d4e4bff464684240e74044a1206058692bf825c",
+      "Hash": "a550fdde6374a02ea6d17183d78c6131"
     },
     "tweenr": {
       "Package": "tweenr",
@@ -2712,20 +2669,6 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "791a57f43c887111490851dcd166d344"
-    },
-    "xlsx": {
-      "Package": "xlsx",
-      "Version": "0.6.5",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "d24d579f59a3b6da1e1cf4660425443e"
-    },
-    "xlsxjars": {
-      "Package": "xlsxjars",
-      "Version": "0.6.1",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "4c4b3bc29a916f33f1298dd951133351"
     },
     "xml2": {
       "Package": "xml2",
