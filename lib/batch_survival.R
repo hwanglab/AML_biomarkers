@@ -59,7 +59,7 @@ BatchSurvival <- function(data, time, lasso_model, event_col) {
           debug(logger, "Done with times!")
             names(res) <- times
             res <- purrr::discard(res, ~ all(is.na(.x)))
-          debug(logger, paste0("Lenght of res is: ", length(res)))
+          debug(logger, paste0("Length of res is: ", length(res)))
             if (length(res) > 0) {
                 stats_unclean <- map(res, ~ .x[["stat"]])
                 plots[[st]] <- map(res, ~ .x[["plot"]])
