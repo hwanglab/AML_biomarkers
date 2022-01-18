@@ -253,7 +253,7 @@ SetPlan <- function(schedule = FALSE) {
     debug(logger, "The plan is set to batchtools using slurm")
     walltime_hours <- 24
     mem_gb <- 64
-    resources <- list(mem = mem_gb, ncpus = 4, walltime = walltime_hours * 60^2)
+    resources <- list(memory = mem_gb, ncpus = 4, walltime = walltime_hours * 60^2)
     plan(
       list(
         tweak("batchtools_slurm", resources = resources),
@@ -283,7 +283,7 @@ diagnosis <- cache_rds(
     assays_to_print <- glue_collapse(assays_to_load, sep = ", ", last = " and ")
     info(logger, glue("The assay(s) being loaded is/are {assays_to_print}"))
     seurat <- LoadH5Seurat(
-      file.path("/mnt", "ess", "clonal_evolution", "preprocessing", "outs", "05_seurat_annotated.h5Seurat"),
+      file.path(Sys.getenv("AML_DATA"), "05_seurat_annotated.h5Seurat"),
       assays = assays_to_load,
       verbose = FALSE
     )
@@ -292,8 +292,8 @@ diagnosis <- cache_rds(
     MatchValuesForSubset <- function(val, col) {
       rownames(filter(seurat[[]], .data[[col]] == val))
     }
-    debug(logger, glue("The class of cols is {class(cols)}"))
-    debug(logger, glue("The class of vals is {class(vals)}"))
+    debug(logger, glue("The class of cols is {class(argv$cols)}"))
+    debug(logger, glue("The class of vals is {class(argv$vals)}"))
     res <- map(argv$cols, .f = function(col, vals) {
       unique(unlist(lapply(vals, MatchValuesForSubset, col)))
     }, argv$vals)
@@ -311,7 +311,7 @@ diagnosis <- cache_rds(
   rerun = argv$invalidate,
   hash = list(
     file.info(
-      file.path("/mnt", "ess", "clonal_evolution", "preprocessing", "outs", "05_seurat_annotated.h5Seurat")
+      file.path(Sys.getenv("AML_DATA"), "05_seurat_annotated.h5Seurat")
     ),
     argv$vals,
     argv$cols

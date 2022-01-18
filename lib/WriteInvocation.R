@@ -1,19 +1,19 @@
 WriteInvocation <- function(argv, output_path) {
   argv2 <- argv
 
-  header <- commandArgs() %>%
-    str_subset("radi") %>%
-    #stringr::str_remove("--file=") %>%
-    basename() #%>%
-    #str_remove(".R")
+  # header <- commandArgs() %>%
+  #   str_subset("radi") %>%
+  #   #stringr::str_remove("--file=") %>%
+  #   basename() #%>%
+  #   #str_remove(".R")
 
-  args_used <- paste(names(argv2), argv2, sep = ": ")
+  # args_used <- paste(names(argv2), argv2, sep = ": ")
 
-  cat(
-    args_used, "\n",
-    file = here(output_path, header),
-    sep = "\n"
-  )
+  # cat(
+  #   args_used, "\n",
+  #   file = here(output_path, header),
+  #   sep = "\n"
+  # )
 }
 
 TestInvocation <- function(argv, output_path) {

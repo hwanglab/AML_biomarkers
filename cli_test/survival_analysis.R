@@ -50,7 +50,19 @@ parser$add_argument(
   help = "Should training-vars be excluded instead?",
   action = "store_true"
 )
-
+parser$add_argument(
+  "--nfolds",
+  "-F",
+  help = "how many folds to use, 0 = LOO CV",
+  default = 0
+)
+parser$add_argument(
+  "--n-alpha",
+  "-A",
+  "-N",
+  help = "how many values for alpha for the GLM should be tested? [currently only use 0]",
+  default = 2
+)
 argv <- parser$parse_args()
 
 # load more libraries
@@ -116,7 +128,7 @@ PackageCheck <- function(..., error = TRUE) {
 #' @param exclude <tidyselect> a column (or vector of columns) in df to exclude in the lasso model
 #' @param include <tidyselect> a column (or vector of columns) in df to include in the lasso model
 #' @param k number of LASSO regression iterations
-#' @param nfolds number of folds for LASSO regression
+#' @param nfolds number of folds for LASSO regression, 0 for Leave-one-out CV
 #' 
 #' @return a \code{glmnet} object
 #' 
@@ -143,7 +155,13 @@ PackageCheck <- function(..., error = TRUE) {
 #'              exclude = c(`P-value`:RMSE, where(is_character)))
 #'              }
 #' }
-DoLassoModel <- function(df, outcome, exclude = NULL, include = NULL, k = 1000, nfolds = 10) {
+DoLassoModel <- function(
+    df, outcome,
+    exclude = NULL,
+    include = NULL,
+    k = 1000,
+    nfolds = as.numeric(argv$nfolds)
+  ) {
   PackageCheck("glmnet")
   
   o <- rlang::enquo(outcome)
@@ -189,24 +207,64 @@ DoLassoModel <- function(df, outcome, exclude = NULL, include = NULL, k = 1000, 
   }
   
   if (length(response) != nrow(mat)) rlang::abort("Number of observations does not match!")
+  if (nfolds == 0) nfolds <- length(response)
+  fold_vector <- cv.glmnet(
+    y = response,
+    x = mat,
+    nfolds = nfolds,
+    keep = TRUE
+  )$foldid
 
-  B <- matrix(NA, ncol(mat), k)
-
-   for (i in 1:k) {
+  LassoFunction <- function(alpha) {
     fit_res <- cv.glmnet(
       y = response,
       x = mat,
-      nfolds = nfolds
+      foldid = fold_vector,
+      alpha = alpha
       )
     fit_est <- as.numeric(coef(fit_res, s = "lambda.min"))
-
-    B[, i] <- fit_est
+    return(fit_est)
   }
-  mask <- B != 0
-  mask <- matrixStats::rowCounts(mask, value = TRUE)
-  rows_select <- which(vec > 0.95 * k)
-  B <- rowMeans(B[rows_select, ])
-  return(B)
+
+  AverageLassoModel <- function(x) {
+    mask <- x != 0
+    mask <- matrixStats::rowCounts(mask, value = TRUE)
+    rows_select <- which(mask > 0.95 * k)
+    B <- rowMeans(x[rows_select, ])
+    return(B)
+  }
+
+  MultipleLassoFunction <- function(alpha) {
+    info(logger, glue("    Running GLM with alpha = {alpha}"))
+    map_dfc(1:k, ~ LassoFunction(alpha))
+  }
+
+  DetermineNSignificantFeatures <- function(x) {
+    mask <- x != 0
+    mask <- matrixStats::rowCounts(mask, value = TRUE)
+    counts <- mask[mask != 0]
+    return(length(counts))
+  }
+
+  alpha_cv <- tibble(alpha = seq(0, 1, length.out = as.numeric(argv$n_alpha)))
+
+  # suppresses an annoying "New Names: " message
+  suppressMessages({
+    alpha_cv <- alpha_cv %>%
+      mutate(
+        model = map(alpha, MultipleLassoFunction),
+        clean = map(model, AverageLassoModel),
+        n     = map_int(model, DetermineNSignificantFeatures)
+      )
+  })
+
+  cols_to_use <- colnames(data)
+  mod_to_use <- filter(alpha_cv, alpha == 0) %>%
+    pull(clean) %>%
+    unlist(recursive = FALSE)
+  names(mod_to_use) <- c("intercept", cols_to_use)
+
+  return(mod_to_use)
 }
 
 #' Calcualte scores using coefficents from a LASSO model
@@ -232,9 +290,10 @@ DoLassoModel <- function(df, outcome, exclude = NULL, include = NULL, k = 1000, 
 #' }
 #' }
 UseLASSOModelCoefs <- function(x, coef) {
-  mod2 <- coef[-1, ] %>% as.matrix() %>% as.data.frame()
+  mod2 <- coef[-1, , drop = FALSE] #%>% as.matrix() %>% as.data.frame()
+  debug(logger, "        Cleaning up model")
   w_vec <- list(0)
-  mod2 <- mod2[which(mod2[1] != 0), ,drop = FALSE]
+  mod2 <- mod2[which(mod2 != 0), ,drop = FALSE]
   
   missing_features <- mod2[which(rownames(mod2) %!in% colnames(x)), , drop = FALSE] %>% rownames()
   n_features <- nrow(mod2)
@@ -251,7 +310,7 @@ UseLASSOModelCoefs <- function(x, coef) {
                     "% features present.")
     rlang::warn(message = c(mfeat, feats, pfeat))
   }
-  
+  debug(logger, "        Calculating weight vector")
   for (i in seq_along(rownames(mod2))) {
     col <- rownames(mod2)[i]
     vec <- x[[col]]
@@ -319,14 +378,16 @@ if (argv$test_id == "incremental") {
   dir.create(plots_path, recursive = TRUE, showWarnings = FALSE)
 } else {
   output_path <- here(output_path, argv$test_id)
-  
+  plots_path <- here(plots_path, argv$test_id)
   if (dir.exists(output_path)) {
     info(logger, "The specified test_id has been used. Padding with date")
     time <- Sys.time()
     argv$test_id <- glue("{argv$test_id}/{time}")
-    output_path <- here(output_path, argv$test_id)
+    output_path <- here(output_path, time)
+    plots_path <- here(plots_path, time)
+    debug(logger, plots_path)
+    debug(logger, output_path)
   }
-  plots_path <- here(plots_path, argv$test_id)
   info(logger, c("Using ", argv$test_id, " as the test id"))
   dir.create(output_path, showWarnings = FALSE, recursive = TRUE)
   dir.create(plots_path, recursive = TRUE, showWarnings = FALSE)
@@ -403,18 +464,21 @@ suppressWarnings({
   lasso_model <- rlang::parse_expr(file(path)) %>% rlang::eval_bare()
 })
 
-lasso_model_red <- coef(lasso_model)
+debug(logger, "LASSO Model Training Done!")
+
+lasso_model_red <- lasso_model %>%
+  as.matrix() %>%
+  as.data.frame() 
 
 lasso_model_red %>%
-  as.matrix() %>%
-  as.data.frame() %>%
-  mutate(rownames = rownames(lasso_model_red), .before = 1) %>%
+  rownames_to_column() %>%
   write_tsv(here(output_path, "lasso_model_coefs.tsv"))
 
-lasso_model_red <- lasso_model_red[2:nrow(lasso_model_red), ]
-lasso_model_red <- lasso_model_red[lasso_model_red != 0]
+lasso_model_red <- as.data.frame(lasso_model_red)
+lasso_model_test <- lasso_model_red[2:nrow(lasso_model_red), , drop = FALSE]
+lasso_model_test <- lasso_model_red[lasso_model_red != 0, , drop = FALSE]  
 
-if (length(lasso_model_red) == 0) {
+if (length(lasso_model_test) == 0) {
   error(logger, "The lasso model is empty!")
   source(here("lib/WriteInvocation.R"))
   WriteInvocation(argv, output_path = here(output_path, "invocation"))
@@ -433,7 +497,7 @@ event_col <- c("First Event" = "relapse", "vital_status" = "Dead", "status" = 1)
 debug(logger, "Doing Survival Analysis")
 source(here("lib/batch_survival.R"))
 suppressWarnings({
-  results <- BatchSurvival(data, times, lasso_model, event_col)
+  results <- BatchSurvival(data, times, lasso_model_red, event_col)
   })
 
 pdf(here(plots_path, "survival.pdf"))
@@ -453,24 +517,32 @@ SetupTARGETData <- function(df) {
       event = if_else(`First Event` == "relapse", 1, 0),
       score_bin_median = if_else(score >= median(score), "LS-HIGH", "LS-LOW"),
       flt3_ratio = if_else(`FLT3/ITD allelic ratio` > 0.4, "AR+", "AR-"),
-      MRD_end = if_else(`MRD at end of course 1` > 5, "MRD+", "MRD-")
+      MRD_end = if_else(`MRD % at end of course 1` > 5, "MRD+", "MRD-")
     )
-  
-  mutation_cols <- c("WT1 mutation", "c-Kit Mutation Exon 8", "c-Kit Mutation Exon 17", "NPM mutation", "CEBPA mutation", "FLT3 PM", "MRD_end", "MLL")
 
-  res <- df %>%
+  mutation_cols <- c(
+    "WT1 mutation", "c-Kit Mutation Exon 8", "c-Kit Mutation Exon 17",
+    "NPM mutation", "CEBPA mutation", "FLT3 PM", "MRD_end", "MLL"
+  )
+
+  res <- res %>%
     mutate(
       across(
-        .cols = mutation_cols,
+        .cols = all_of(mutation_cols),
         .fns = ~ if_else(.x %in% c("not done", "unknown"), NA_character_, .x)
       )
     ) %>%
     mutate(
-      `Cytogenetic Complexity` = if_else(`Cytogenetic Complexity` %in% c("na", "n/a"), NA_character_, `Cytogenetic Complexity`)
+      `Cytogenetic Complexity` = if_else(
+        `Cytogenetic Complexity` %in% c("na", "n/a"),
+        NA_character_,
+        `Cytogenetic Complexity`
+        )
     )
   return(res)
 }
 
+debug(logger, "Setting up TARGET Data...")
 target_data <- map(target_data, SetupTARGETData)
 
 surv_form <- Surv(`Event Free Survival Time in Days`, event) ~ score_bin_median + flt3_ratio + MRD_end + `WT1 mutation`
@@ -489,7 +561,7 @@ set <- "FLT3"
 
 graphics.off()
 
-ggforest(fits2, data = data$FLT3)
+#ggforest(fits, data = data$FLT3)
 
 source(here("lib/WriteInvocation.R"))
 WriteInvocation(argv, output_path = here(output_path, "invocation"))

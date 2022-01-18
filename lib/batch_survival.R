@@ -39,11 +39,10 @@ BatchSurvival <- function(data, time, lasso_model, event_col) {
             debug(logger, paste0("   Using ", avail_cols[[st]], " on ", names(data)[[dataset]]))
             x[["status"]] <- if_else(x[[avail_cols[[st]]]] == avail_events[[st]], 1, 0)
             debug(logger, "   Using Lasso coefs to calculate module score")
-            x[["score"]] <- UseLASSOModelCoefs(x, coef(lasso_model))
+            x[["score"]] <- UseLASSOModelCoefs(x, lasso_model)
             debug(logger, "   Binning scores on per dataset median")
             x[["score_bin"]] <- if_else(x$score >= median(x$score, na.rm = TRUE), "High", "Low")
             res <- list(0)
-
             for (time_axis in seq_along(times)) {
               debug(logger, paste0("      Using ", times[[time_axis]]))
                 pSuv <- purrr::possibly(DoSurvivalAnalysis, otherwise = NA)
@@ -69,6 +68,9 @@ BatchSurvival <- function(data, time, lasso_model, event_col) {
                     mutate(meta = names(res),
                         data = names(data)[[dataset]],
                         col = rep_len(rlang::as_name(avail_cols[[st]]), length(stats_unclean)))
+            } else {
+              error(logger, "No output created during survival analysis!")
+              quit(status = 1)
             }
         }
         debug(logger, "Done with cols!")
@@ -115,6 +117,8 @@ DoSurvivalAnalysis <- function(data, time, status, predictor,
   gb <- rlang::enquo(group_by)
   
   fit <- survminer::surv_fit(Surv(t, s) ~ p, data = data)
+
+  debug(logger, glue("class(fit) = {class(fit)}"))
   
   surv_form <- survival::Surv(t, s) ~ p
   
@@ -123,35 +127,40 @@ DoSurvivalAnalysis <- function(data, time, status, predictor,
                      "chi-sq" = survival::survdiff(surv_form, data),
                      "none" = NULL,
                      rlang::abort("Unknown test: ", method))
+  debug(logger, glue("class(stat_res) = {class(stat_res)}"))
   
   p_val <- switch(EXPR = method,
                   "cox" = CalculatePValues.cox(stat_res),
                   "chi-sq" = CalculatePValues.chi(stat_res),
                   "none" = NULL)
+
+  debug(logger, glue("p_val = {p_val}"))
   
   title <- paste0("Kaplan-Meier Curves for ",
                   rlang::as_name(enquo(status)),
                   " ~ ",
                   rlang::as_name(enquo(predictor)))
+  debug(logger, "Made title")
   xlab <- rlang::as_name(enquo(time))
+  debug(logger, "Made x Labels")
   
   if (!is.null(description)) {
     subtitle1 <- paste0("Data: ", description)
   } else {
     subtitle1 <- NULL
   }
-  
-  if (!is.null(lasso)) {
-    lasso <- coef(lasso)[-1, , drop = FALSE] %>% as.matrix() %>% as.data.frame()
-    features <- lasso[lasso != 0, , drop = FALSE] %>%
-      dplyr::mutate(x = abs(s0)) %>%
-      dplyr::arrange(dplyr::desc(x)) %>% rownames()
-    if (length(features) >= 8) features <- c(features[1:8], "...")
-    subtitle2 <- paste0("Model: ", paste(features, collapse = ", "))
+  debug(logger, "Made Subtitle")
+  # if (!is.null(lasso)) {
+  #   lasso <- coef(lasso)[-1, , drop = FALSE] %>% as.matrix() %>% as.data.frame()
+  #   features <- lasso[lasso != 0, , drop = FALSE] %>%
+  #     dplyr::mutate(x = abs(s0)) %>%
+  #     dplyr::arrange(dplyr::desc(x)) %>% rownames()
+  #   if (length(features) >= 8) features <- c(features[1:8], "...")
+  #   subtitle2 <- paste0("Model: ", paste(features, collapse = ", "))
     
-  } else {
+  # } else {
     subtitle2 <- NULL
-  }
+  # }
   
   subtitle <- NULL
   if (!is.null(subtitle1) & !is.null(subtitle2)) {

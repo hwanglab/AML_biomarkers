@@ -55,9 +55,13 @@ logger <- logger(threshold = argv$verbose)
 if (argv$model == "CIBERSORTx") {
   info(logger, "Preparing Data from CIBERSORTx")
   data_filename <- c("tcga_data.txt", "target_data.txt", "beat_aml.txt")
+
+  is_batch_corrected <- file.exists(here(glue("{output_path}/cibersort_results/b_mode"))) || file.exists(here(glue("{output_path}/s_mode")))
   
+  debug(logger, glue("Detected data that is {if_else(is_batch_corrected, '', 'not ')}batch corrected"))
+
   bc_filename <- if_else(
-    file.exists(here(glue("{output_path}/cibersort_results/b_mode"))) || file.exists(here(glue("{output_path}/s_mode"))),
+    is_batch_corrected,
     "_Adjusted.txt",
     "_Results.txt"
   )

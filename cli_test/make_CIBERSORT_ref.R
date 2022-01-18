@@ -61,7 +61,7 @@ seurat_down <- cache_rds(
   {
     subset(diagnosis, downsample = 100)
   },
-  file = glue("{bc_ext}_CIBERSORT_ref_prep.rds"),
+  file = glue("CIBERSORT_ref_prep.rds"),
   dir = paste0(output_path, "/cache/")
 )
 
@@ -85,7 +85,7 @@ system("sed 1d cibersort_ref_input.txt > cibersort_ref_input2.txt")
 
 logical_val <- file.rename(
   here("cibersort_ref_input2.txt"),
-  here(output_path, glue("{bc_ext}_cibersort_ref_input.txt"))
+  here(output_path, glue("cibersort_ref_input.txt"))
 )
 
 if (logical_val) debug(logger, "Moving reference succsessful!")
