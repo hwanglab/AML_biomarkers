@@ -177,7 +177,7 @@ for dat in argv.mixture:
     elapsed_time = end_time - start_time
     logger.info("CIBERSORTx completed in {}".format(elapsed_time))
 
-files = os.listdir("{}/{}/{}".format(output_path, name_of_output_directory, random_string))
+files = os.listdir("{}/{}".format(output_path, name_of_output_directory))
 
 if argv.B_mode:
     # Print file
@@ -201,6 +201,6 @@ for f in files:
         remove = False
 
 if remove:
-    shutil.rmtree(source_path)
+    shutil.rmtree("{}/{}".format(output_path, name_of_output_directory))
  
 lib.write_invocation(argv, output_path)

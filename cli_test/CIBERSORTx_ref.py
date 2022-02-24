@@ -116,7 +116,7 @@ else:
     subprocess.run(" ".join(ref_run_cmd), shell=True, stdout=subprocess_fun)
     logger.info("Reference Creation Finished")
     logger.info("Copying Reference to CIBERSORTx input directory")
-    source_path = "{}/{}".format(output_path, ref_filename)
+    source_path = "{}/cibersort_results/{}".format(output_path, ref_filename)
     destination_path = "{}/{}".format(output_path, ref_filename_end)
     shutil.copyfile(source_path, destination_path)
  
