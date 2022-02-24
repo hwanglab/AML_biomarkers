@@ -21,6 +21,13 @@ parser$add_argument(
   help = "should messages be printed? One of: DEBUG, INFO, WARN, ERROR",
   default = "INFO"
 )
+parser$add_argument(
+  "--targeted-assay",
+  "-T",
+  help = "which batch correction method to use",
+  default = "Untargeted",
+  choices = c("Untargeted", "PAN_CANCER", "AML")
+)
 
 argv <- parser$parse_args()
 
@@ -65,7 +72,9 @@ seurat_down <- cache_rds(
   dir = paste0(output_path, "/cache/")
 )
 
-cibersort_data <- GetAssayData(seurat_down, slot = "data", assay = "SCT")
+assay <- if_else(argv$targeted_assay == "Untargeted", "SCT", argv$targeted_assay)
+
+cibersort_data <- GetAssayData(seurat_down, slot = "data", assay = assay)
 cibersort_data <- as.data.frame(cibersort_data)
 cibersort_clusters <- as.data.frame(
   t(paste0("cluster", Idents(seurat_down)))

@@ -87,6 +87,13 @@ parser$add_argument(
   default = "CCA",
   choices = c("CCA", "RPCA")
 )
+parser$add_argument(
+  "--targeted-assay",
+  "-T",
+  help = "which batch correction method to use",
+  default = "Untargeted",
+  choices = c("Untargeted", "PAN_CANCER", "AML")
+)
 
 argv <- parser$parse_args()
 
@@ -180,7 +187,7 @@ if (argv$column_names) {
     library(tidyverse)
   })
   seurat <- LoadH5Seurat(
-    file.path(Sys.getenv("AML_DATA"), "05_seurat_annotated.h5Seurat"),
+    "data/preprocessed.h5Seurat",
     assays = c("RNA")
   )
   metadata <- seurat[[]] %>%
@@ -206,7 +213,6 @@ suppressPackageStartupMessages({
   library(Seurat)
   library(SeuratDisk)
   library(here)
-
   library(readxl)
   library(biomaRt)
   library(survival)
@@ -280,10 +286,11 @@ diagnosis <- cache_rds(
   expr = {
     assays_to_load <- c("RNA", "SCT")
     if (argv$batch_correct) assays_to_load <- c("RNA")
+    if (argv$targeted_assay != "Untargeted") assays_to_load <- c(argv$targeted_assay)
     assays_to_print <- glue_collapse(assays_to_load, sep = ", ", last = " and ")
     info(logger, glue("The assay(s) being loaded is/are {assays_to_print}"))
     seurat <- LoadH5Seurat(
-      file.path(Sys.getenv("AML_DATA"), "05_seurat_annotated.h5Seurat"),
+      "data/preprocessed.h5Seurat",
       assays = assays_to_load,
       verbose = FALSE
     )
@@ -311,7 +318,7 @@ diagnosis <- cache_rds(
   rerun = argv$invalidate,
   hash = list(
     file.info(
-      file.path(Sys.getenv("AML_DATA"), "05_seurat_annotated.h5Seurat")
+      "data/preprocessed.h5Seurat"
     ),
     argv$vals,
     argv$cols
@@ -410,6 +417,8 @@ diagnosis <- cache_rds(
   rerun = argv$invalidate,
   hash = list(diagnosis, argv$batch_correct)
 )
+
+debug(logger, "Dimension Reductions Finished")
 
 info(logger, "Doing Frequency Analysis")
 ## Find DE Clusters ----
