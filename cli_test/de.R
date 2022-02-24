@@ -26,7 +26,7 @@ parser$add_argument(
   "--cores",
   "-c",
   help = "how many cores should be used",
-  default = 1
+  default = 0
 )
 parser$add_argument(
   "--clusters",
@@ -226,7 +226,7 @@ graphics.off()
 
 if (!file.exists(here(output_path, "cluster_differential_expression.tsv"))) {
   info(logger, "Doing Differential Expression")
-  markers <- FindAllMarkers(seurat, test.use = "MAST")
+  markers <- FindAllMarkers(seurat, test.use = "DESeq2")
   write_tsv(
     markers,
     file = here(output_path, "cluster_differential_expression.tsv")
@@ -243,7 +243,7 @@ if (!file.exists(here(output_path, "pvf_differential_expression.tsv"))) {
   info(logger, "Doing Differential Expression")
   seurat2 <- seurat
   Idents(seurat) <- "prognosis"
-  markers2 <- FindAllMarkers(seurat2, test.use = "MAST")
+  markers2 <- FindAllMarkers(seurat2, test.use = "DESeq2")
   write_tsv(
     markers2,
     file = here(output_path, "pvf_differential_expression.tsv")
@@ -331,7 +331,7 @@ if (length(argv$clusters) != 0) {
   }
   cells <- WhichCells(seurat, idents = argv$clusters)
   seurat_selected <- seurat[, cells]
-  markers <- FindAllMarkers(seurat_selected, test.use = "MAST")
+  markers <- FindAllMarkers(seurat_selected, test.use = "DESeq2")
   clusters <- glue_collapse(clusters, sep = ", ", final = " and ")
   fname <- glue("cluster_differential_expression_({clusters}).tsv")
   write_tsv(markers, file = here(output_path, fname))
