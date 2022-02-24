@@ -59,9 +59,6 @@ if (argv$dir == "") {
   plots_path <- paste0(parser$run_dir, "/plots/", argv$id)
 }
 
-bc_ext <- "no_bc"
-if (argv$batch_correct) bc_ext <- argv$batch_correct_method
-
 if (!dir.exists(here(plots_path))) {
   debug(logger, "Plots directory is being created")
   dir.create(here(plots_path))
@@ -235,7 +232,7 @@ res <- append(res, msigdb_res)
 
 plot_res <- transpose(res)
 plot_res <- map(plot_res, ~ discard(.x, ~ !nrow(.x@result)))
-dir.create(glue("{plots_path}/{bc_ext}_GSEA"), showWarnings = FALSE)
+dir.create(glue("{plots_path}/GSEA"), showWarnings = FALSE)
 
 for (cluster in names(plot_res)) {
   plots <- list()
@@ -256,7 +253,7 @@ for (cluster in names(plot_res)) {
       ) +
       plot_layout(widths = c(5, 2))
   }
-  pdf(glue("{plots_path}/{bc_ext}_GSEA/{cluster}.pdf"), width = 35, height = 22)
+  pdf(glue("{plots_path}/GSEA/{cluster}.pdf"), width = 35, height = 22)
   print(plots)
   graphics.off()
 }
@@ -266,7 +263,7 @@ plot_res %>%
   map_df("result", .id = "id") %>%
   separate(id, into = c("cluster", "gene_set"), sep = "\\.") %>%
   separate(cluster, into = c("prognosis", "cluster")) %>%
-  write_tsv(glue("{output_path}/{bc_ext}_GSEA.tsv"))
+  write_tsv(glue("{output_path}/GSEA.tsv"))
 
 source(here("lib/WriteInvocation.R"))
 WriteInvocation(argv, output_path = here(output_path, "invocation"))
