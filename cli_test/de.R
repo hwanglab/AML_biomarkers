@@ -63,9 +63,10 @@ if (argv$dir == "") {
   output_path <- paste0("outs/", argv$id)
   plots_path <- paste0("plots/", argv$id)
 } else {
-  output_path <- paste0(parser$run_dir, "/outs/", argv$id)
-  plots_path <- paste0(parser$run_dir, "/plots/", argv$id)
+  output_path <- paste0(parser$dir, "/outs/", argv$id)
+  plots_path <- paste0(parser$dir, "/plots/", argv$id)
 }
+
 
 if (!dir.exists(here(plots_path))) {
   debug(logger, "Plots directory is being created")
@@ -78,12 +79,15 @@ if (!dir.exists(here(output_path))) {
 
 # read in data
 data_filename <- list.files(
-  path = here(output_path, "cache/"),
+  path = here(output_path, "cache"),
   full.names = TRUE,
-  pattern = "^seurat_"
+  pattern = "^seurat_dimred"
 )
 
-if (length(data_filename) > 1) fatal("There is more than one cached object")
+if (length(data_filename) > 1) {
+  fatal(logger, "There is more than one cached object")
+  quit(status = 1)
+  }
 
 debug(logger, paste0("Importing Data from: ", data_filename))
 seurat <- readRDS(data_filename)
