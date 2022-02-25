@@ -27,6 +27,12 @@ parser$add_argument(
   help = "which model should be used?",
   default = "CIBERSORTx"
 )
+parser$add_argument(
+  "--additional-deconvolutions",
+  "-A",
+  metavar = "BASENAME",
+  help = "Additional clinical_deconvolution.rds files from external runs of this script. Useful for PHI from collaborators. These files should be placed in outs/ID/external. No need for an rds extension"
+)
 
 argv <- parser$parse_args()
 
@@ -133,6 +139,30 @@ deconvoluted <- list(
   BeatAML = beat_aml_decon,
   TCGA = tcga_deconvoluted
 )
+
+adtnl_dec <- argv$additional_deconvolutions
+if (!is.null(adtnl_dec)) {
+  for (i in seq_along(adtnl_dec)) {
+    suppressWarnings({
+      tryCatch(
+        external_data[[i]] <- readRDS(
+          here(output_path, "external", glue("{adtnl_dec[[i]]}.rds"))
+          ),
+        error = function(e) {
+          warn(logger, glue("File not found for {adtnl_dec[[i]]}"))
+          info(
+            logger,
+            glue("Did you put the file in {here(output_path, 'external')}/?")
+          )
+        }
+      )
+    })
+  }
+  if (exists("external_data")) {
+    ext_dat <- unlist(external_data, recursive = FALSE)
+    deconvoluted <- append(deconvoluted, ext_dat)
+  }
+}
 
 saveRDS(deconvoluted, here(output_path, glue("cache/clinical_deconvoluted.rds")))
 
