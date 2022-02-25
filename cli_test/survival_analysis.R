@@ -202,7 +202,7 @@ DoLassoModel <- function(
     selected <- ggplot2::remove_missing(selected)
     NotNumeric(selected)
     data <- dplyr::select(selected, -!!o)
-    response <- dplyr::pull(selected, !!o)
+    response <- dplyr::pull(df, !!o)
     mat <- as.matrix(data)
   }
   
@@ -379,15 +379,15 @@ if (argv$test_id == "incremental") {
 } else {
   output_path <- here(output_path, argv$test_id)
   plots_path <- here(plots_path, argv$test_id)
-  if (dir.exists(output_path)) {
-    info(logger, "The specified test_id has been used. Padding with date")
-    time <- Sys.time()
-    argv$test_id <- glue("{argv$test_id}/{time}")
-    output_path <- here(output_path, time)
-    plots_path <- here(plots_path, time)
-    debug(logger, plots_path)
-    debug(logger, output_path)
-  }
+  # if (dir.exists(output_path)) {
+  #   info(logger, "The specified test_id has been used. Padding with date")
+  #   time <- Sys.time()
+  #   argv$test_id <- glue("{argv$test_id}/{time}")
+  #   output_path <- here(output_path, time)
+  #   plots_path <- here(plots_path, time)
+  #   debug(logger, plots_path)
+  #   debug(logger, output_path)
+  # }
   info(logger, c("Using ", argv$test_id, " as the test id"))
   dir.create(output_path, showWarnings = FALSE, recursive = TRUE)
   dir.create(plots_path, recursive = TRUE, showWarnings = FALSE)
@@ -460,9 +460,19 @@ if (argv$exclude) {
 
 debug(logger, paste0("Lasso Model Command: ", suppressWarnings(readLines(path))))
 
-suppressWarnings({
-  lasso_model <- rlang::parse_expr(file(path)) %>% rlang::eval_bare()
-})
+lasso_model_rds <- here(output_path, glue("lasso_model.rds"))
+
+write_invoke <- TRUE
+if (!file.exists(lasso_model_rds)) {
+  suppressWarnings({
+    lasso_model <- rlang::parse_expr(file(path)) %>% rlang::eval_bare()
+  })
+  saveRDS(lasso_model, lasso_model_rds)
+} else {
+  info(logger, "Existing LASSO model found. Importing Existing Model")
+  lasso_model <- readRDS(lasso_model_rds)
+  write_invoke <- FALSE
+}
 
 debug(logger, "LASSO Model Training Done!")
 
@@ -552,16 +562,16 @@ fits <- coxph(surv_form, data = target_data$`FLT3`)
 
 pdf(glue("{plots_path}/forest_plot.pdf"))
 set <- "FLT3"
-  fits <- coxph(surv_form, data = target_data[[set]])
-  ggforest(
-    fits,
-    data = target_data[[set]], 
-    main = glue("Hazard Ratios: {set}")
-    )
+fits <- coxph(surv_form, data = target_data[[set]])
+ggforest(
+  fits,
+  data = target_data[[set]], 
+  main = glue("Hazard Ratios: {set}")
+  )
 
 graphics.off()
 
-#ggforest(fits, data = data$FLT3)
-
-source(here("lib/WriteInvocation.R"))
-WriteInvocation(argv, output_path = here(output_path, "invocation"))
+if (write_invoke) {
+  source(here("lib/WriteInvocation.R"))
+  WriteInvocation(argv, output_path = here(output_path, "invocation"))
+}
