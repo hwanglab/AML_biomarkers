@@ -395,17 +395,20 @@ if (argv$test_id == "incremental") {
 
 if (!dir.exists(here(output_path))) {
   fatal(logger, "Output directory does not exist")
+  quit(status = 1)
 }
 
 debug(logger, paste0("Importing Data from: ", data_filename))
 
-data <- tryCatch(
-  readRDS(data_filename),
-  error = function(e) {
-    error(logger, "Cannot find annotated deconvoluted samples.")
-    quit(status = 1)
-  }
-)
+suppressWarnings({
+  data <- tryCatch(
+    readRDS(data_filename),
+    error = function(e) {
+      error(logger, "Cannot find annotated deconvoluted samples.")
+      quit(status = 1)
+    }
+  )
+})
 
 debug(logger, "Preparing Data for training")
 debug(logger, paste0("Data Names: ", paste0(names(data), collapse = ", ")))

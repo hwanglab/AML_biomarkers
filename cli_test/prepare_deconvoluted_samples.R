@@ -104,7 +104,7 @@ debug(logger, "Joining TARGET clinical data and deconvolution results")
 target_deconvoluted <- target_deconvoluted %>%
   # as_tibble(rownames = "patient_USI") %>%
   separate(Mixture, into = c(NA, NA, "USI", NA, NA), sep = "-") %>%
-  left_join(clinical) %>%
+  left_join(clinical, by = "USI") %>%
   mutate(across(where(is_character), str_to_lower))
 
 debug(logger, "Joining TCGA clinical data and deconvolution results")
