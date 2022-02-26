@@ -1,0 +1,4 @@
+Type: project
+Description: AML Biomarker Discovery
+Depends:
+    DESeq2
