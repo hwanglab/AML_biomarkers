@@ -107,9 +107,21 @@ PrepareTargetedCounts <- function(name, params, split) {
 assays <- map(panel_names, PrepareTargetedCounts, params, split)
 names(assays) <- stringr::str_to_upper(panel_names)
 
-seurat[["PAN_CANCER"]] <- assays[["PAN_CANCER"]]
+for (i in seq_along(assays)) {
+    seurat[[names(assays)[[i]]]] <- assays[[i]]
+}
 
-seurat <- NormalizeData(seurat, assay = "PAN_CANCER")
+seurat <- map(names(assays), ~ NormalizeData(seurat, assay = .x)))
+
+seurat <- map(
+    names(assays),
+    ~ SCTransform(
+        seurat,
+        assay = .x,
+        vars.to.regress = "percent.mt",
+        new.assay.name = glue("{.x}_SCT")
+        )
+    )
 
 SaveH5Seurat(
     seurat,
