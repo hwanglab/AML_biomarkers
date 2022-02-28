@@ -6,6 +6,9 @@
 
 ### Getting Setup
 Renv is used for this project. 
+To quickly initialize the R enviorment, run `./cli/configure_enviorment.R`. 
+
+#### Manual Setup with renv
 To install all the R packages just use `renv::restore()`. 
 The renv autoloader should automatically boostrap renv and `renv::restore()` will take care of installing all the correct package versions, although you will have to install system dependencies yourself.
 
