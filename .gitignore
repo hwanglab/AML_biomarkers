@@ -14,7 +14,7 @@ outs/
 cache/
 cli/lib/git_setup.sh
 .env
-slurm*
+slurm-*
 *.sif
 *.DS_Store
 __pycache__
