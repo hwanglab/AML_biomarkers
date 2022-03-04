@@ -14,7 +14,7 @@ The renv autoloader should automatically boostrap renv and `renv::restore()` wil
 
 #### Getting Setup on an HPC
 Singlularity was not trivial to use, therfore I directly loaded modules. The following should be added to your `.bashrc` file or prepend to any submission script (note, versions may differ across systems):
-```
+```bash
 # Set up R enviorment
 module load hdf5-serial/1.12.0
 module load magick
@@ -78,6 +78,9 @@ These are all found in `/clinical_info`
 **survival_analysis.R:**
     Does a survival analysis using the chosen parameters.
 
+**survival_analysis_multi_model.R:**
+    Does a survival analysis using LASSO, Random Forests, KNN Regression, Support Vector Regression, and Neural Network Regression
+
 **de.R:**
     Does a differential expression per cluster
 
@@ -99,6 +102,26 @@ Defualts to the current directory.
 This uses the future framework.
 
 `--help`: will print help for each CLI function.  
+
+`--info`: information for column names and values for survival analysis. 
+Has a specific format of "Dataset:option=value:...". 
+Potential options are below. You can also provide the path to a `json` file with the following format:
+
+```json
+"Dataset": {
+        "option": "value",
+        "option2": "value",
+        ...
+    }
+```
+
+|Option   |Decription
+|:-------:|----
+|efs      | Column containing the survivial information
+|wbc      | Column containing % White Blood Cells, not used currently
+|status   | Column containing the events 
+|event    | Value in status to determine an event has occured 
+|not_event| Value in status to determine an event has *not* occured. All other values in status will be considered an event. 
 
 ## Future Goals
 - Simplify Clinical Annotation sheets
