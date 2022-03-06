@@ -31,7 +31,10 @@ parser$add_argument(
   "--additional-deconvolutions",
   "-A",
   metavar = "BASENAME",
-  help = "Additional clinical_deconvolution.rds files from external runs of this script. Useful for PHI from collaborators. These files should be placed in outs/ID/external. No need for an rds extension"
+  help = glue::glue("Additional clinical_deconvolution.rds files from \\
+  external runs of this script. Useful for PHI from collaborators. These \\
+  files should be placed in outs/ID/external. No need for an rds extension. \\
+  You can also provide a full path")
 )
 
 argv <- parser$parse_args()
@@ -63,7 +66,7 @@ if (argv$model == "CIBERSORTx") {
   data_filename <- c("tcga_data.txt", "target_data.txt", "beat_aml.txt")
 
   is_batch_corrected <- file.exists(here(glue("{output_path}/cibersort_results/b_mode"))) || file.exists(here(glue("{output_path}/s_mode")))
-  
+
   debug(logger, glue("Detected data that is {if_else(is_batch_corrected, '', 'not ')}batch corrected"))
 
   bc_filename <- if_else(
@@ -129,36 +132,60 @@ beat_aml_decon <- beat_aml_decon %>%
 debug(logger, "Filtering data and saving results")
 deconvoluted <- list(
   TRAIN = split$train,
-  FLT3 = split$test,
-  NEG = filter(
+  "TARGET:FLT3" = split$test,
+  "TARGET:NEG" = filter(
     target_deconvoluted,
     `FLT3/ITD positive?` == "no",
     `CEBPA mutation` == "no"
   ),
-  CEBPA = filter(target_deconvoluted, `CEBPA mutation` == "yes"),
-  BeatAML = beat_aml_decon,
-  TCGA = tcga_deconvoluted
+  "TARGET:CEBPA" = filter(target_deconvoluted, `CEBPA mutation` == "yes"),
+  "BeatAML:FLT3" = beat_aml_decon,
+  "TCGA:FLT3" = tcga_deconvoluted
 )
 
 adtnl_dec <- argv$additional_deconvolutions
+external_data <- list()
+
+TestIfPath <- function(path) {
+  tryCatch(
+    {
+      res <- readRDS(path)
+      info(logger, "Successfully read file from path")
+      return(res)
+    },
+    error = function(e) {
+      warn(logger, "File not valid system path.")
+      info(
+        logger,
+        glue("Did you put the file in {here(output_path, 'external')}/ or provide the full path?")
+      )
+    }
+  )
+}
+
 if (!is.null(adtnl_dec)) {
+  debug(
+    logger,
+    glue("Adding in additional deconvolutions: {glue_collapse(adtnl_dec)}")
+  )
   for (i in seq_along(adtnl_dec)) {
+    info(logger, glue("Loading {adtnl_dec[[i]]}"))
     suppressWarnings({
       tryCatch(
         external_data[[i]] <- readRDS(
           here(output_path, "external", glue("{adtnl_dec[[i]]}.rds"))
-          ),
+        ),
         error = function(e) {
-          warn(logger, glue("File not found for {adtnl_dec[[i]]}"))
           info(
             logger,
-            glue("Did you put the file in {here(output_path, 'external')}/?")
+            glue("File not found. Testing if full path.")
           )
+          external_data[[i]] <- TestIfPath(adtnl_dec[[i]])
         }
       )
     })
   }
-  if (exists("external_data")) {
+  if (!is_empty(external_data)) {
     ext_dat <- unlist(external_data, recursive = FALSE)
     deconvoluted <- append(deconvoluted, ext_dat)
   }
