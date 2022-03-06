@@ -27,7 +27,6 @@ BatchSurvival <- function(data, time, lasso_model, event_col) {
     plots_final <- list(0)
     score_final <- list(0)
     for (dataset in seq_along(data)) {
-        debug(logger, paste0("Batch Survival on: ", names(data)[[dataset]]))
         x <- as_tibble(data[[dataset]])
         avail_cols <- events_[names(event_col) %in% colnames(data[[dataset]])]
         avail_events <- event_col[names(event_col) %in% colnames(data[[dataset]])]
@@ -36,15 +35,11 @@ BatchSurvival <- function(data, time, lasso_model, event_col) {
         plots <- list(0)
         
         for (st in seq_along(avail_cols)) {
-            debug(logger, paste0("   Using ", avail_cols[[st]], " on ", names(data)[[dataset]]))
             x[["status"]] <- if_else(x[[avail_cols[[st]]]] == avail_events[[st]], 1, 0)
-            debug(logger, "   Using Lasso coefs to calculate module score")
             x[["score"]] <- UseLASSOModelCoefs(x, lasso_model)
-            debug(logger, "   Binning scores on per dataset median")
             x[["score_bin"]] <- if_else(x$score >= median(x$score, na.rm = TRUE), "High", "Low")
             res <- list(0)
             for (time_axis in seq_along(times)) {
-              debug(logger, paste0("      Using ", times[[time_axis]]))
                 pSuv <- purrr::possibly(DoSurvivalAnalysis, otherwise = NA)
                 desc <- paste0(names(data)[[dataset]], ": ", avail_cols[[st]])
                 res[[time_axis]] <- pSuv(x,
@@ -55,10 +50,8 @@ BatchSurvival <- function(data, time, lasso_model, event_col) {
                     description = desc,
                     lasso = lasso_model)
             }
-          debug(logger, "Done with times!")
             names(res) <- times
             res <- purrr::discard(res, ~ all(is.na(.x)))
-          debug(logger, paste0("Length of res is: ", length(res)))
             if (length(res) > 0) {
                 stats_unclean <- map(res, ~ .x[["stat"]])
                 plots[[st]] <- map(res, ~ .x[["plot"]])
@@ -73,16 +66,12 @@ BatchSurvival <- function(data, time, lasso_model, event_col) {
               quit(status = 1)
             }
         }
-        debug(logger, "Done with cols!")
         plots_final[[dataset]] <- plots
         stats_final[[dataset]] <- reduce(stats, bind_rows)
         score_final[[dataset]] <- x[["score"]]
     }
-    debug(logger, "Done with data!")
     res1 <- stats_final %>% keep(is.data.frame) %>% reduce(bind_rows)
-    debug(logger, "res1 created")
     res2 <- plots_final %>% unlist(recursive = FALSE) %>% unlist(recursive = FALSE)
-    debug(logger, "res2 created")
     return(list(stats = res1, plots = res2, scores = score_final))
 }
 
@@ -118,7 +107,6 @@ DoSurvivalAnalysis <- function(data, time, status, predictor,
   
   fit <- survminer::surv_fit(Surv(t, s) ~ p, data = data)
 
-  debug(logger, glue("class(fit) = {class(fit)}"))
   
   surv_form <- survival::Surv(t, s) ~ p
   
@@ -127,29 +115,23 @@ DoSurvivalAnalysis <- function(data, time, status, predictor,
                      "chi-sq" = survival::survdiff(surv_form, data),
                      "none" = NULL,
                      rlang::abort("Unknown test: ", method))
-  debug(logger, glue("class(stat_res) = {class(stat_res)}"))
   
   p_val <- switch(EXPR = method,
                   "cox" = CalculatePValues.cox(stat_res),
                   "chi-sq" = CalculatePValues.chi(stat_res),
                   "none" = NULL)
-
-  debug(logger, glue("p_val = {p_val}"))
   
   title <- paste0("Kaplan-Meier Curves for ",
                   rlang::as_name(enquo(status)),
                   " ~ ",
                   rlang::as_name(enquo(predictor)))
-  debug(logger, "Made title")
   xlab <- rlang::as_name(enquo(time))
-  debug(logger, "Made x Labels")
   
   if (!is.null(description)) {
     subtitle1 <- paste0("Data: ", description)
   } else {
     subtitle1 <- NULL
   }
-  debug(logger, "Made Subtitle")
   # if (!is.null(lasso)) {
   #   lasso <- coef(lasso)[-1, , drop = FALSE] %>% as.matrix() %>% as.data.frame()
   #   features <- lasso[lasso != 0, , drop = FALSE] %>%
