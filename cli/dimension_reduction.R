@@ -92,7 +92,7 @@ parser$add_argument(
   "-T",
   help = "which batch correction method to use",
   default = "Untargeted",
-  choices = c("Untargeted", "PAN_CANCER", "AML")
+  choices = c("Untargeted", "PAN_CANCER", "AML", "PAN_CANCER_SCT", "AML_SCT")
 )
 
 argv <- parser$parse_args()
