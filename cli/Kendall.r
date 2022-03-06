@@ -64,9 +64,9 @@ if (length(data_filename) > 1) {
 seurat <- readRDS(data_filename)
 
 DoKendall <- function(feat1, feat2, object) {
-    data <- Seurat::FetchData(object, vars = c(feat1, feat2), slot = "data")
-    cor_res <- cor.test(data[, 1], data[, 2], method = "kendall")
-    return(cor_res)
+  data <- Seurat::FetchData(object, vars = c(feat1, feat2), slot = "data")
+  cor_res <- cor.test(data[, 1], data[, 2], method = "kendall")
+  return(cor_res)
 }
 
 info(logger, "Getting pairwise gene lists")

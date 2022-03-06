@@ -49,23 +49,22 @@ logger <- logger(threshold = argv$verbose)
 decon <- readRDS(here(output_path, glue("cache/clinical_deconvoluted.rds")))
 
 
-#decon$TCGA <- mutate(decon$TCGA, time = days_to_death)
+# decon$TCGA <- mutate(decon$TCGA, time = days_to_death)
 decon$BeatAML <- mutate(decon$BeatAML, time = OS_DAYS)
 
 target <- decon[c("TRAIN", "FLT3", "NEG", "CEBPA")]
 
 TARGETPlot <- . %>%
-    distinct(USI, .keep_all = TRUE) %>%
-    pivot_longer(cols = starts_with("cluster"), names_to = "cluster", values_to = "frequency") %>%
-    mutate(cluster = str_remove(cluster, "cluster") %>% as.numeric() %>% as.factor()) %>%
-    ggplot(mapping = aes(x = USI, y = frequency, fill = cluster)) +
-    geom_col() +
-    theme_classic()
+  distinct(USI, .keep_all = TRUE) %>%
+  pivot_longer(cols = starts_with("cluster"), names_to = "cluster", values_to = "frequency") %>%
+  mutate(cluster = str_remove(cluster, "cluster") %>% as.numeric() %>% as.factor()) %>%
+  ggplot(mapping = aes(x = USI, y = frequency, fill = cluster)) +
+  geom_col() +
+  theme_classic()
 
-decon$BeatAML %>% 
-    pivot_longer(cols = starts_with("cluster"), names_to = "cluster", values_to = "frequency") %>%
-    mutate(cluster = str_remove(cluster, "cluster") %>% as.numeric() %>% as.factor()) %>%
-    ggplot(mapping = aes(x = Mixture, y = frequency, fill = cluster)) +
-    geom_col() +
-    theme_classic()
-
+decon$BeatAML %>%
+  pivot_longer(cols = starts_with("cluster"), names_to = "cluster", values_to = "frequency") %>%
+  mutate(cluster = str_remove(cluster, "cluster") %>% as.numeric() %>% as.factor()) %>%
+  ggplot(mapping = aes(x = Mixture, y = frequency, fill = cluster)) +
+  geom_col() +
+  theme_classic()

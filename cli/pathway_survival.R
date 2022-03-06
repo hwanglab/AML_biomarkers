@@ -231,7 +231,7 @@ form_rpart <- Surv(`Event Free Survival Time in Days`, event) ~ score_bin_median
 coxph(form_rpart, data = data_model_res$FLT3)
 palette <- c("#E7B800", "#2E9FDF")
 
-cutoffs <- map(argv$gene_set, .f = function(pathway){
+cutoffs <- map(argv$gene_set, .f = function(pathway) {
   rpart_form <- reformulate(pathway, "`Event Free Survival Time in Days`")
   rpart_res <- rpart(form, data = training_model_res, method = "class")
   min_cp <- rpart_res$cptable[which.min(rpart_res$cptable[, "xerror"]), "CP"]
@@ -240,11 +240,11 @@ cutoffs <- map(argv$gene_set, .f = function(pathway){
   cutoffs <- prune_rpart$functions$print(
     prune_rpart$frame$yval2,
     attr(prune_rpart, "ylevels"),
-    getOption("digits") 
+    getOption("digits")
   ) %>%
     str_split(" ") %>%
     unlist()
-  
+
   cutoff <- cutoffs[1]
   return(cutoff)
 })
@@ -275,7 +275,7 @@ for (i in seq_along(cutoffs)) {
 
     # use median
     form <- Surv(`Event Free Survival Time in Days`, event) ~ median
-    c2 <-coxph(form, data = work)
+    c2 <- coxph(form, data = work)
     fit <- surv_fit(form, data = work)
     p2 <- ggsurvplot(fit, data = work, palette = palette, conf.inv = TRUE)
   }

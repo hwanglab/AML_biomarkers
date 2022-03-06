@@ -87,7 +87,7 @@ data_filename <- list.files(
 if (length(data_filename) > 1) {
   fatal(logger, "There is more than one cached object")
   quit(status = 1)
-  }
+}
 
 debug(logger, paste0("Importing Data from: ", data_filename))
 seurat <- readRDS(data_filename)

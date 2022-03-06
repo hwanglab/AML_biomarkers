@@ -216,10 +216,10 @@ datasets[["target"]]$samples <- datasets[["target"]]$samples %>%
 clinical <- rename(clinical, samples = USI) %>%
   mutate(
     across(
-      .cols = c("FLT3/ITD positive?", "CEBPA mutation"), 
+      .cols = c("FLT3/ITD positive?", "CEBPA mutation"),
       .fns = tolower
-      )
-      )
+    )
+  )
 tcga_ann <- rename(tcga_ann, samples = case_submitter_id)
 beat_aml_clinical <- rename(beat_aml_clinical, samples = SAMPLE_ID)
 

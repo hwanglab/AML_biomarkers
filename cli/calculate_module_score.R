@@ -81,9 +81,10 @@ if (!dir.exists(here(output_path))) {
 
 # read in data
 
-inputs <- map(argv$ids, ~glue("{output_path}/{.x}/cache"))
-data_filename <- map(inputs, 
-  ~list.files(
+inputs <- map(argv$ids, ~ glue("{output_path}/{.x}/cache"))
+data_filename <- map(
+  inputs,
+  ~ list.files(
     path = here(.x),
     full.names = TRUE,
     pattern = "^seurat_dim"
@@ -117,9 +118,9 @@ fatal(logger, "Script unfinished")
 quit(status = 1)
 for (i in seq_along(names(set))) {
   plot[[i]] <- ggplot(data = md, mapping = aes_string(y = names(sets)[[i]], x = "group")) +
-  geom_violin()
+    geom_violin()
 }
 
 ggplot(data = md, mapping = aes_string(y = names(sets)[[1]], x = "group")) +
-geom_violin() +
-theme_classic()
+  geom_violin() +
+  theme_classic()

@@ -5,16 +5,16 @@ library(tidyverse)
 source(here("lib/functions.R"))
 ### TARGET ----
 
-if(exists("logger")) debug(logger, "Preparing TARGET Data")
-if(exists("logger")) debug(logger, "Reading Validation Data")
+if (exists("logger")) debug(logger, "Preparing TARGET Data")
+if (exists("logger")) debug(logger, "Reading Validation Data")
 val <- read_excel(
   here("clinical_info/TARGET_AML_ClinicalData_Validation_20181213.xlsx")
 )
-if(exists("logger")) debug(logger, "Reading Discovery Data")
+if (exists("logger")) debug(logger, "Reading Discovery Data")
 dis <- read_excel(
   here("clinical_info/TARGET_AML_ClinicalData_Discovery_20181213.xlsx")
 )
-if(exists("logger")) debug(logger, "Reading COG Data")
+if (exists("logger")) debug(logger, "Reading COG Data")
 cog <- read_excel(here("clinical_info/AAML19B3Q_data_transfer.xlsx"),
   sheet = 2
 ) %>%
@@ -68,11 +68,11 @@ clinical <- bind_rows(val, dis) %>%
   separate(`TARGET USI`, into = c(NA, NA, "USI"), sep = "-") %>%
   sjlabelled::set_na(na = c("N/A", "NA")) %>%
   select(-`Gemtuzumab ozogamicin treatment`) %>%
-  filter(USI != "paslze" & !is.na(`Bone marrow leukemic blast percentage (%)`))  %>%
+  filter(USI != "paslze" & !is.na(`Bone marrow leukemic blast percentage (%)`)) %>%
   distinct()
 
 ### TCGA ----
-if(exists("logger")) debug(logger, "Preparing TCGA Data")
+if (exists("logger")) debug(logger, "Preparing TCGA Data")
 tcga_ann <- read_tsv(
   here("data/tcga/clinical.cart.2021-04-22/clinical.tsv"),
   na = "'--",
@@ -108,7 +108,7 @@ tcga_ann2 <- read_tsv(
   )
 
 ### BeatAML ----
-if(exists("logger")) debug(logger, "Preparing BeatAML Data")
+if (exists("logger")) debug(logger, "Preparing BeatAML Data")
 beat_aml_clinical <- read_tsv(
   here("data/aml_ohsu_2018/data_clinical_sample.txt"),
   skip = 4,

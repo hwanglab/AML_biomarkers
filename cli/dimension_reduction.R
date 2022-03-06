@@ -137,7 +137,7 @@ DoDimensionReductions <- function(seurat,
 
   info(logger, "Finding Clusters...")
   seurat <- verbosity(Seurat::FindNeighbors(seurat, dims = 1:19))
-  seurat <- verbosity(Seurat::FindClusters(seurat, resolution = resolution))
+  seurat <- verbosity(Seurat::FindClusters(seurat, resolution = as.numeric(resolution)))
   return(seurat)
 }
 
@@ -165,17 +165,16 @@ FindClusterFreq <- function(object, metadata, cluster, sort_by = NULL) {
 WilcoxTestSafe <- purrr::safely(wilcox.test, otherwise = list(p.value = NA))
 
 CalculatePValues.chi <- function(x) {
-    if (is.matrix(x$obs)) {
-        otmp <- apply(x$obs, 1, sum)
-        etmp <- apply(x$exp, 1, sum)
-    }
-    else {
-        otmp <- x$obs
-        etmp <- x$exp
-    }
-    df <- (sum(1 * (etmp > 0))) - 1
-    pval <- pchisq(x$chisq, df, lower.tail = FALSE)
-    return(pval)
+  if (is.matrix(x$obs)) {
+    otmp <- apply(x$obs, 1, sum)
+    etmp <- apply(x$exp, 1, sum)
+  } else {
+    otmp <- x$obs
+    etmp <- x$exp
+  }
+  df <- (sum(1 * (etmp > 0))) - 1
+  pval <- pchisq(x$chisq, df, lower.tail = FALSE)
+  return(pval)
 }
 
 ####### End Function Definitions ###############################################
@@ -275,7 +274,7 @@ SetPlan <- function(schedule = FALSE) {
 
 furrr_options <- furrr_options(stdout = FALSE, seed = 1000000)
 
-# so the plan here is to separate the computation into 4 steps 
+# so the plan here is to separate the computation into 4 steps
 # and use cache_rds to save the steps along the way
 # Step 1: Subset object
 # Step 2: If we want to integrate, Split data, and run SCTransform
@@ -347,11 +346,11 @@ if (argv$batch_correct) {
     hash = list(diagnosis)
   )
 
-SetPlan()
+  SetPlan()
 
-bc_filename <- glue("seurat_integrated.rds")
+  bc_filename <- glue("seurat_integrated.rds")
 
-info(logger, glue("Preparing to integrate using {argv$batch_correct_method"))
+  info(logger, glue("Preparing to integrate using {argv$batch_correct_method"))
 
   diagnosis <- cache_rds(
     {

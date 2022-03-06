@@ -140,12 +140,12 @@ options(mc.cores = 1L) # disable BiocParallel in favor of futureverse
 suppressMessages({
   suppressWarnings({
     fake <- gseGO(
-      geneList = gene_list[[1]], 
-      OrgDb = org.Hs.eg.db, 
-      ont = "BP", 
-      keyType = "SYMBOL", 
+      geneList = gene_list[[1]],
+      OrgDb = org.Hs.eg.db,
+      ont = "BP",
+      keyType = "SYMBOL",
       verbose = FALSE
-      )
+    )
     res[["GO"]] <- future_map(
       gene_list,
       ~ gseGO(
@@ -173,12 +173,12 @@ suppressMessages({
     )
     debug(logger, "    MKEGG Done")
     fake <- gseKEGG(
-        geneList = gene_list_entrez[[1]],
-        organism = "hsa",
-        eps = 0,
-        verbose = FALSE,
-        pAdjustMethod = p_adjust_method
-      )
+      geneList = gene_list_entrez[[1]],
+      organism = "hsa",
+      eps = 0,
+      verbose = FALSE,
+      pAdjustMethod = p_adjust_method
+    )
     res[["KEGG"]] <- future_map(
       gene_list_entrez,
       ~ gseKEGG(
@@ -193,10 +193,10 @@ suppressMessages({
     debug(logger, "    KEGG Done")
 
     fake <- gseDO(
-      geneList = gene_list_entrez[[1]], 
+      geneList = gene_list_entrez[[1]],
       pAdjustMethod = p_adjust_method,
       verbose = FALSE
-      )
+    )
 
     res[["DO"]] <- future_map(
       gene_list_entrez,
