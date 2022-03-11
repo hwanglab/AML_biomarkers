@@ -51,7 +51,7 @@ These are all found in `/clinical_info`
 A docker image can be found at `schaunr/amlbiomarkers`. To quickly get setup and explore the container run:
 `docker run -it schaunr/amlbiomarkers bash`. 
 This will download the image, and open up to a terminal. 
-The image `schaunr/amlbiomarkers:${TAG}-multiarch` is multiarchitecture (x64 and ARM/Apple Silicon) and does not contain an instance of RStudio like `schaunr/amlbiomarkers` does.
+The image `schaunr/amlbiomarkers:${TAG}` is multiarchitecture (x64 and ARM/Apple Silicon).
 However, there will be no data inside the image. 
 To setup the entire pipeline, you'll need to bind mount several directories.
 ```bash
@@ -62,7 +62,7 @@ docker run \
     -v "$(pwd)"/clinical_info:/clininfo \
     -v "$(pwd)"/outs:/outs \
     -v "$(pwd)"/plots:/plots \
-    schaunr/amlbiomarkers:{$TAG}-multiarch \
+    schaunr/amlbiomarkers:{$TAG} \
     survival_analysis.R \
     -i run1 \
     -I EFS \
@@ -75,22 +75,10 @@ docker run \
     -v "$(pwd)"/clinical_info:/clinical_info \
     -v "$(pwd)"/outs:/outs \
     -v "$(pwd)"/plots:/plots \
-    schaunr/amlbiomarkers:{$TAG}-multiarch \
+    schaunr/amlbiomarkers:{$TAG} \
     bash
-
-# Run using an instance of RStudio (x86 only)
-docker run \
-    -d \
-    -v "$(pwd)"/clinical_info:/clinical_info \
-    -v "$(pwd)"/outs:/outs \
-    -v "$(pwd)"/plots:/plots \
-    -p 8787:8787 \
-    -e PASSWORD=password \
-    schaunr/amlbiomarkers:{$TAG}
 ```
-From there you can open up [Visual Studio Code](https://code.visualstudio.com) to load the container or naviage to RStudio via [localhost:8787](http://localhost:8787/), depending on the image you used.
-The username for RStudio is rstudio. 
-You can also use `schaunr/amlbiomarkers:${TAG}-multiarch` in a non-interactive mode by passing the name and options associated with a CLI script and the container will exit after completion.
+You can also use `schaunr/amlbiomarkers:${TAG}` in a non-interactive mode by passing the name and options associated with a CLI script and the container will exit after completion. See first example above.
 
 ### CLI Function Information
 
