@@ -7,6 +7,8 @@
 ### Getting Setup
 Renv is used for this project. 
 To quickly initialize the R enviorment, run `./cli/configure_enviorment.R`. 
+There is also a docker container availible at schaunr/amlbiomarkers. 
+See more under [Running the Pipeline](###running-with-docker)
 
 #### Manual Setup with renv
 To install all the R packages just use `renv::restore()`. 
@@ -45,9 +47,56 @@ Some external datasets are required. TARGET AML, BeatAML, and TCGA LAML are all 
 Many different clinical information tables are also required. 
 These are all found in `/clinical_info`
 
+### Running with Docker
+A docker image can be found at `schaunr/amlbiomarkers`. To quickly get setup and explore the container run:
+`docker run -it schaunr/amlbiomarkers bash`. 
+This will download the image, and open up to a terminal. 
+The image `schaunr/amlbiomarkers:${TAG}-multiarch` is multiarchitecture (x64 and ARM/Apple Silicon) and does not contain an instance of RStudio like `schaunr/amlbiomarkers` does.
+However, there will be no data inside the image. 
+To setup the entire pipeline, you'll need to bind mount several directories.
+```bash
+TAG="latest"
+
+# Run using a script name as arguments
+docker run \
+    -v "$(pwd)"/clinical_info:/clininfo \
+    -v "$(pwd)"/outs:/outs \
+    -v "$(pwd)"/plots:/plots \
+    schaunr/amlbiomarkers:{$TAG}-multiarch \
+    survival_analysis.R \
+    -i run1 \
+    -I EFS \
+    -V 'c(matches("^Year|^Age|^Overall"), where(is_character))' \
+    -a 'Event Free Survival Time in Days' -E
+
+# Run interactively in the terminal
+docker run \
+    -it \
+    -v "$(pwd)"/clinical_info:/clinical_info \
+    -v "$(pwd)"/outs:/outs \
+    -v "$(pwd)"/plots:/plots \
+    schaunr/amlbiomarkers:{$TAG}-multiarch \
+    bash
+
+# Run using an instance of RStudio (x86 only)
+docker run \
+    -d \
+    -v "$(pwd)"/clinical_info:/clinical_info \
+    -v "$(pwd)"/outs:/outs \
+    -v "$(pwd)"/plots:/plots \
+    -p 8787:8787 \
+    -e PASSWORD=password \
+    schaunr/amlbiomarkers:{$TAG}
+```
+From there you can open up [Visual Studio Code](https://code.visualstudio.com) to load the container or naviage to RStudio via [localhost:8787](http://localhost:8787/), depending on the image you used.
+The username for RStudio is rstudio. 
+You can also use `schaunr/amlbiomarkers:${TAG}-multiarch` in a non-interactive mode by passing the name and options associated with a CLI script and the container will exit after completion.
+
 ### CLI Function Information
 
 #### Function Descriptions
+See [Pipeline Flow Chart](##pipeline-flow-chart) for details on connecting the various functions and a list of options for each script.  
+
 **dimension_reduction.R:**
     Subsets the data and runs dimension reductions (UMAP, PCA) and does batch correction using Harmony. 
     Then finds clusters that are different between groups.
@@ -123,6 +172,11 @@ Potential options are below. You can also provide the path to a `json` file with
 |event    | Value in status to determine an event has occured 
 |not_event| Value in status to determine an event has *not* occured. All other values in status will be considered an event. 
 
+## Pipeline Flow Chart
+
+Below is a flow chart that shows the prerequesites for each script. Color is provided to organize the scripts  into several different categories.
+![Flowchart for the pipeline with options](pipeline_flow_chart.png)
 ## Future Goals
 - Simplify Clinical Annotation sheets
 - Clear Downloading of External Datasets
+- Master Pipeline Runner, i.e. Martian, NextFlow...

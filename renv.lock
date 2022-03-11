@@ -2087,8 +2087,17 @@
       "Version": "1.1-28",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "e055d75b424a33fdc8904e5f81263789",
-      "Requirements": []
+      "Requirements": [
+        "MASS",
+        "Matrix",
+        "Rcpp",
+        "RcppEigen",
+        "boot",
+        "lattice",
+        "minqa",
+        "nlme",
+        "nloptr"
+      ]
     },
     "lmtest": {
       "Package": "lmtest",

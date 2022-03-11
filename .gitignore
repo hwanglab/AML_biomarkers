@@ -21,3 +21,4 @@ __pycache__
 .future
 msigdb
 *.tmpl
+PAT
