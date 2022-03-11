@@ -1,5 +1,4 @@
-#!/usr/bin/env -S Rscript --no-save --quiet
-source("renv/activate.R")
+#!/usr/bin/env Rscript
 library(argparse)
 
 parser <- ArgumentParser("Select Genes from CIBERSORTx GEPs for Survival Analysis")

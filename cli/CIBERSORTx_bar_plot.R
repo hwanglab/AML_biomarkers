@@ -1,6 +1,4 @@
 #! /bin/env Rscript
-
-source("renv/activate.R")
 library(argparse)
 
 # parse args

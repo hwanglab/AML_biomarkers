@@ -2084,7 +2084,7 @@
     },
     "lme4": {
       "Package": "lme4",
-      "Version": "1.1-27",
+      "Version": "1.1-28",
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "e055d75b424a33fdc8904e5f81263789",
@@ -3402,8 +3402,7 @@
     }
   },
   "Python": {
-    "Version": "3.7.4",
-    "Type": "virtualenv",
-    "Name": "./renv/python/virtualenvs/renv-python-3.7.4"
+    "Version": "3.7.12",
+    "Type": "conda"
   }
 }
