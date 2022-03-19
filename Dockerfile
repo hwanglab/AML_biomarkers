@@ -13,7 +13,7 @@ RUN apt-get install -y libcurl4-openssl-dev libhdf5-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/
 
-RUN R -e "install.packages('remotes', repos = c(CRAN = 'https://cloud.r-project.org'))"
+RUN R -e "install.packages(c('remotes', 'reticulate'), repos = c(CRAN = 'https://cloud.r-project.org'))"
 RUN --mount=type=secret,id=PAT \
     GITHUB_PAT=$(cat /run/secrets/PAT) \
     R -e "remotes::install_github('rstudio/renv@${RENV_VERSION}')"
@@ -29,9 +29,6 @@ ENV RENV_CONFIG_CACHE_SYMLINKS FALSE
 RUN apt-get update
 RUN apt-get install -y python
 RUN apt-get install -y python3.7
-#RUN python3 -m venv python_venv 
-
-#RUN bash setup_venv.sh
 RUN mkdir renv
 ADD renv renv
 
@@ -40,17 +37,15 @@ RUN cp renv/.Rprofile .Rprofile
 RUN --mount=type=secret,id=PAT \
     --mount=type=cache,target=/buildx_cache/renv \
     GITHUB_PAT=$(cat /run/secrets/PAT) \
-    R -e 'renv::activate();renv::restore();renv::isolate()'
+    R -e 'reticulate::install_miniconda();renv::activate();renv::restore();renv::isolate()'
 
-RUN wget https://github.com/codercom/code-server/releases/download/1.408-vsc1.32.0/code-server1.408-vsc1.32.0-linux-x64.tar.gz \
-     && tar -xzvf code-server1.408-vsc1.32.0-linux-x64.tar.gz \
-     && chmod +x code-server1.408-vsc1.32.0-linux-x64/code-server
+RUN curl -fsSL https://code-server.dev/install.sh | sh
 
 COPY cli cli
 COPY lib lib
 COPY docker_entry.sh docker_entry.sh
 
-RUN mkdir clininfo
+RUN mkdir clinical_info
 RUN mkdir outs
 RUN mkdir plots
 
