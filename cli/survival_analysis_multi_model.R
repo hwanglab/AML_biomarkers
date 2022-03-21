@@ -51,6 +51,12 @@ parser$add_argument(
   nargs = "+"
 )
 parser$add_argument(
+  "--categorical-prediction",
+  "-c",
+  help = "Is the predictor value categorical?",
+  action = "store_true"
+)
+parser$add_argument(
   "--rerun-training",
   help = "Should training be redone?",
   action = "store_true"
@@ -80,406 +86,10 @@ suppressPackageStartupMessages({
 
 renv::use_python()
 
-#### Make Functions ------------------------------------------------------------
+source(here("cli/lib/utils.R"))
+source(here("cli/lib/lasso.R"))
+source(here("cli/lib/ml.R"))
 
-# Set custom classes for organization of objects for Lasso Modeling
-setOldClass("cv.glmnet")
-setClass("AverageLassoModel", contains = "data.frame")
-setClass("GLM", representation(glm = "cv.glmnet", coefs = "numeric"))
-setClass(
-  "MultiLassoModel",
-  representation(
-    glms = "list",
-    average = "AverageLassoModel",
-    nfeats = "numeric",
-    alpha = "numeric"
-  )
-)
-
-#' Check the existence of a package
-#
-#' @param ... Package names
-#' @param error If true, throw an error if the package doesn't exist
-#
-#' @return Invisibly returns boolean denoting if the package is installed
-#'
-#' @note Taken from Seurat
-#
-PackageCheck <- function(..., error = TRUE) {
-  pkgs <- unlist(x = c(...), use.names = FALSE)
-  package.installed <- vapply(
-    X = pkgs,
-    FUN = requireNamespace,
-    FUN.VALUE = logical(length = 1L),
-    quietly = TRUE
-  )
-  if (error && any(!package.installed)) {
-    stop(
-      "Cannot find the following packages: ",
-      paste(pkgs[!package.installed], collapse = ", "),
-      ". Please install"
-    )
-  }
-  invisible(x = package.installed)
-}
-
-#' Not in operator
-#'
-#' @param lhs stuff
-#' @param rhs stuff
-#'
-
-`%!in%` <- function(lhs, rhs) {
-  match(lhs, rhs, nomatch = 0) == 0
-}
-
-#' Run a Lasso Model with predefined foldid and get coeffients
-#' @param alpha alpha value to use
-#' @param response response vector for prediction
-#' @param mat feature matrix to predict with
-#' @param fold_vector precomputed foldids
-#'
-#' @return GLM object
-LassoFunction <- function(alpha, response, mat, fold_vector) {
-  fit_res <- cv.glmnet(
-    y = response,
-    x = mat,
-    foldid = fold_vector,
-    alpha = alpha
-  )
-  fit_est <- as.numeric(coef(fit_res, s = "lambda.min"))
-  res <- new("GLM", glm = fit_res, coefs = fit_est)
-  return(res)
-}
-
-#' Run k Lasso Models
-#'
-#' @inheritParams LassoFunction
-#' @param k number of iterations for lasso model
-MultipleLassoFunction <- function(alpha, response, mat, fold_vector, k) {
-  purrr::map(1:k, ~ LassoFunction(alpha, response, mat, fold_vector))
-}
-
-#' Average Multiple iterations of a Lasso model
-#'
-#' @inheritParams LassoFunction
-#' @inheritParams MultipleLassoFunction
-#' @param objects A list of GLM object
-#'
-#' @return MultipleLassoModel object
-AverageLassoModels <- function(objects, alpha, data, k) {
-  x <- as.data.frame(purrr::map_dfc(objects, ~ .x@coefs))
-  cols_to_use <- colnames(data)
-  rownames(x) <- c("intercept", cols_to_use)
-  mask <- x != 0
-  mask <- matrixStats::rowCounts(mask, value = TRUE)
-  rows_select <- which(mask > 0.95 * k)
-  B <- rowMeans(x[rows_select, ]) %>% as.data.frame()
-  B <- new("AverageLassoModel", B)
-  nfeats <- DetermineNSignificantFeatures(objects)
-  object <- new(
-    "MultiLassoModel",
-    glms = objects,
-    average = B,
-    nfeats = nfeats,
-    alpha = alpha
-  )
-  return(object)
-}
-
-#' Find Number of features with non-zero weight
-#' @param object A list of GLM object
-#'
-#' @return integer number of features in model
-DetermineNSignificantFeatures <- function(objects) {
-  x <- purrr::map_dfc(objects, ~ .x@coefs)
-  mask <- x != 0
-  mask <- matrixStats::rowCounts(mask, value = TRUE)
-  counts <- mask[mask != 0]
-  return(length(counts) - 1) # -1 for intercept
-}
-
-#' Run a LASSO model
-#'
-#' @param df a data.frame
-#' @param outcome  a column in df that has the continuous outcome variable
-#' @param k number of LASSO regression iterations
-#' @param nfolds number of folds for LASSO regression, 0 for Leave-one-out CV
-#'
-#' @return MultiLassoModel
-#'
-#' @importFrom rlang enquo set_names abort
-#' @importFrom dplyr select pull
-#' @importFrom tibble as_tibble
-
-DoLassoModel <- function(df, outcome,
-                         alpha = 0,
-                         k = 1000,
-                         nfolds = 1) {
-  PackageCheck("glmnet")
-  df <- tibble::as_tibble(df)
-  response <- dplyr::pull(df, outcome)
-  mat <- dplyr::select(df, -outcome) %>% as.matrix()
-  NotNumeric <- function(data) {
-    if (any(apply(x, 2, class) != "numeric")) {
-      rlang::abort("Some columns are not numeric")
-    }
-  }
-
-  if (length(response) != nrow(mat)) rlang::abort("Number of observations does not match!")
-  if (nfolds == 0) nfolds <- length(response)
-  fold_vector <- cv.glmnet(
-    y = response,
-    x = mat,
-    nfolds = nfolds,
-    keep = TRUE
-  )$foldid
-
-  models <- MultipleLassoFunction(
-    alpha = alpha,
-    response = response,
-    mat = mat,
-    fold_vector = fold_vector,
-    k = k
-  )
-  names(models) <- 1:k
-  model <- AverageLassoModels(models, alpha = alpha, data = mat, k = k)
-  return(model)
-}
-
-#' Do a GLM for each value of alpha
-#'
-#' @inheritParams DoLassoModel
-#' @param alphas vector of alphas to use
-#'
-#' @return list of MultiLassoModel objects
-DoGLMAlpha <- function(df, outcome, alphas, nfolds, k) {
-  res <- purrr::map(
-    alphas,
-    ~ DoLassoModel(df, outcome, alpha = .x, k = k, nfolds = nfolds)
-  )
-  names(res) <- glue::glue("LASSO_alpha_{alphas}")
-  purrr::walk2(res, alphas, SaveLassoAsTSV)
-  return(res)
-}
-
-#' Save the Lasso coefficents to TSV file
-#'
-#' @param model a MultiLassoModel object
-#'
-#' @return invisible
-SaveLassoAsTSV <- function(model) {
-  alpha <- model@alpha
-  red <- model@average %>%
-    tibble::rownames_to_column() %>%
-    rlang::set_names(c("feature", "avg_coef")) %>%
-    write_tsv(here(glue("{output_path}/glm_coef_alpha_{alpha}.tsv")))
-  return(invisible(NULL))
-}
-
-#' Check Validity of Lasso Model (2+ Features present)
-#'
-#' @param model An Object
-#'
-#' @return if model is not a MultiLassoModel object, return unchanged, \
-#'         otherwise return object if the number of features is at least 2
-CheckLASSOValidity <- function(model) {
-  if (class(model) != "MultiLassoModel") {
-    return(model)
-  }
-  if (model@nfeats == 0) model <- NULL
-  return(model)
-}
-
-#' Calcualte scores using coefficents from a LASSO model
-#'
-#' @param x a data.frame with colnames matching LASSO model
-#' @param coef coeficents from a model
-#'
-#' @return vector of scores
-#' @export
-#'
-#' @importFrom rlang warn
-#' @importFrom purrr discard reduce
-UseLASSOModelCoefs <- function(object, data = NULL) {
-  if (is.null(data)) {
-    rlang::abort(message = "Cannot predict with no data")
-  }
-  mod2 <- object@average[-1, , drop = FALSE]
-  w_vec <- list()
-  mod2 <- mod2[which(mod2 != 0), , drop = FALSE]
-
-  missing_features <- mod2[which(rownames(mod2) %!in% colnames(data)), , drop = FALSE] %>% rownames()
-  n_features <- nrow(mod2)
-  n_present <- n_features - length(missing_features)
-
-  if (n_present == 0) rlang::abort(message = "There are no features matching the lasso model present!")
-
-  if (length(missing_features) >= 1) {
-    # build message
-    mfeat <- "The following features are missing in the data: "
-    feats <- paste(missing_features, collapse = ", ")
-    pfeat <- paste0(
-      "Only ",
-      round(n_present / n_features * 100, digits = 1),
-      "% features present."
-    )
-    rlang::warn(message = c(mfeat, feats, pfeat))
-  }
-  for (i in seq_along(rownames(mod2))) {
-    col <- rownames(mod2)[i]
-    vec <- data[[col]]
-    w <- mod2[i, 1]
-    w_vec[[i]] <- vec * w
-  }
-  w_vec <- purrr::discard(w_vec, is_empty)
-  w_len <- length(w_vec)
-
-  if (w_len == 1) {
-    res <- w_vec[[1]]
-  } else {
-    res <- w_vec %>%
-      purrr::reduce(rbind) %>%
-      colSums()
-  }
-  return(res + object@average[1, ])
-}
-
-#' Register method for predict
-#' @method
-.S3method("predict", "MultiLassoModel", UseLASSOModelCoefs)
-
-#' Get the filename of a saved model
-#' @param type a string used to identify the model
-GetSavedModelFilename <- function(type) {
-  if (type == "nn_regression") {
-    here(output_path, "saved_models", glue("{type}_model.h5"))
-  } else {
-    here(output_path, "saved_models", glue("{type}_model.rds"))
-  }
-}
-
-#' Check if model has been saved
-#' @inheritParams GetSavedModelFilename
-CheckSavedModel <- function(type) {
-  model_save <- GetSavedModelFilename(type)
-  file.exists(model_save) || dir.exists(model_save)
-}
-
-#' Load a saved model from disk
-#' @inheritParams GetSavedModelFilename
-LoadSavedModel <- function(type) {
-  model_save <- GetSavedModelFilename(type)
-  if (type == "nn_regression") {
-    backend_k <- keras::backend()
-    backend_k$clear_session()
-    model <- keras::load_model_hdf5(model_save)
-  } else {
-    model <- readRDS(model_save)
-  }
-  return(model)
-}
-
-### ML Functions  --------------------------------------------------------------
-
-#' Clean data to prepare for training and prediction
-#'
-#' @param df data to clean
-#' @param wbc column with % WBCs as string
-#' @param efs column with survival as string
-#' @param status column with status as string
-CleanData <- function(df, wbc = NULL, efs = NULL, status) {
-  clean <- janitor::clean_names(df)
-
-  wbc <- janitor::make_clean_names(wbc)
-  efs <- janitor::make_clean_names(efs)
-  status <- janitor::make_clean_names(status)
-
-  namekey <- c("efs_days", "status")
-  names(namekey) <- c(efs, status)
-
-  clean <- plyr::rename(clean, namekey, warn_missing = TRUE) %>%
-    select(starts_with("cluster"), efs_days, status)
-  res <- clean %>%
-    as_tibble(.name_repair = "minimal") %>%
-    setNames(colnames(.)) %>%
-    remove_missing()
-
-  return(res)
-}
-
-#' Subset data with good features
-#' @param df a datafame
-PrepareDataForML <- function(df) {
-  data <- dplyr::select(df, starts_with("cluster"))
-
-  labs <- pull(df, efs_days)
-
-  res <- data %>%
-    as_tibble(.name_repair = "minimal") %>%
-    setNames(colnames(.)) %>%
-    mutate(label = labs)
-
-  return(res)
-}
-
-#' Recode status for prediction
-#' @param data a dataframe
-#' @param invert should the events be inverted (event_use are the good responses)
-#' @param event_use what to call an event, should be 1 value in status column
-PrepareDataForSurvival <- function(data, invert, event_use) {
-  res <- dplyr::select(data, status, efs = efs_days)
-  res$code <- if_else(res$status == event_use, 1, 0)
-  if (invert) res$code <- if_else(res$status == event_use, 0, 1)
-  return(res)
-}
-
-#' Calcuate a risk score from a model
-#' @param data dataframe to use
-#' @param model a model to use with a predict method
-CalcualteScoreFromModel <- function(data, model) {
-  score <- predict(model, data)
-  data <- mutate(
-    data,
-    score = score,
-    score_bin = if_else(score > median(score, na.rm = TRUE), "HIGH", "LOW")
-  ) %>%
-    dplyr::select(score, score_bin)
-  return(data)
-}
-
-#' Parse information for survival
-#'
-ReturnNamesFromString <- function() {
-  if (length(argv$info) != 0) data_info <- c(data_info, argv$info)
-  split <- str_split(data_info, ":")
-  names <- map_chr(split, ~ .x[[1]])
-  split1 <- map(split, ~ .x[-1])
-
-  split2 <- map(split1, str_split, "=")
-  names(split2) <- names
-  map(
-    split2,
-    ~ map(.x, ~ set_names(.x[[2]], .x[[1]])) %>% unlist()
-  ) %>%
-    bind_rows() %>%
-    mutate(set = names)
-}
-
-ReturnNamesFromJSON <- function() {
-  if (!file.exists(argv$info)) {
-    error(logger, glue("File does not exist: {argv$info}"))
-  }
-  jsonlite::fromJSON(argv$info) %>% map_dfr(as_tibble, .id = "set")
-}
-
-ParseNames <- function() {
-  if (tools::file_ext(argv$info) == "json") {
-    return(ReturnNamesFromJSON())
-  } else {
-    return(ReturnNamesFromString())
-  }
-}
 ##### Prepare Directory --------------------------------------------------------
 logger <- logger(threshold = argv$verbose)
 
@@ -493,41 +103,11 @@ if (argv$dir == "") {
 
 data_filename <- here(output_path, glue("cache/clinical_deconvoluted.rds"))
 
-if (argv$test_id == "incremental") {
-  dir_names <- list.dirs(here(output_path), full.names = FALSE)
-  debug(
-    logger,
-    paste0(
-      "The following directories exist: ",
-      paste0(dir_names, collapse = ", ")
-    )
-  )
-  dir_names <- as.numeric(dir_names)
-  dir_names <- dir_names[!is.na(dir_names)]
-  if (is_empty(dir_names)) {
-    dir_names <- 0
-  }
-
-  debug(
-    logger,
-    paste0(
-      "The following directories exist: ",
-      paste0(dir_names, collapse = ", ")
-    )
-  )
-  new_name <- max(dir_names, na.rm = TRUE) + 1
-  info(logger, c("Using ", new_name, " as the test id"))
-  output_path <- here(output_path, new_name)
-  plots_path <- here(plots_path, new_name)
-  dir.create(output_path, showWarnings = FALSE)
-  dir.create(plots_path, recursive = TRUE, showWarnings = FALSE)
-} else {
-  output_path <- here(output_path, argv$test_id)
-  plots_path <- here(plots_path, argv$test_id)
-  info(logger, c("Using ", argv$test_id, " as the test id"))
-  dir.create(output_path, showWarnings = FALSE, recursive = TRUE)
-  dir.create(plots_path, recursive = TRUE, showWarnings = FALSE)
-}
+output_path <- here(output_path, argv$test_id)
+plots_path <- here(plots_path, argv$test_id)
+info(logger, c("Using ", argv$test_id, " as the test id"))
+dir.create(output_path, showWarnings = FALSE, recursive = TRUE)
+dir.create(plots_path, recursive = TRUE, showWarnings = FALSE)
 
 if (!dir.exists(here(output_path))) {
   fatal(logger, "Output directory does not exist")
@@ -538,6 +118,20 @@ if (argv$rerun) unlink(here(output_path, "saved_models"))
 
 if (!dir.exists(here(output_path, "saved_models"))) {
   dir.create(here(output_path, "saved_models"))
+}
+
+if (dir.exists(here(output_path, "saved_modes"))) {
+  if (argv$categorical) {
+    if (!file.exists(here(output_path, "saved_models", "categorical"))) {
+      error(logger, "Categorical Analysis requested, but ran in a Regression test directory!")
+      quit(error = 1)
+    }
+  } else {
+    if (!file.exists(here(output_path, "saved_models", "categorical"))) {
+      error(logger, "Regression Analysis requested, but ran in a Categorical test directory!")
+      quit(error = 1)
+    }
+  }
 }
 
 debug(logger, paste0("Importing Data from: ", data_filename))
@@ -605,23 +199,26 @@ if (!is.na(argv$additional_testing_sets)) {
 }
 
 ##### LASSO Model --------------------------------------------------------------
-info(logger, "Training Lasso Model")
 
-info(logger, "Running LASSO")
-model_use <- "lasso"
-if (CheckSavedModel(model_use)) {
-  info(logger, glue("Existing {model_use} model found. Importing Existing Model"))
-  models <- LoadSavedModel(model_use)
+if (categorical) {
+  models <- list()
 } else {
-  alphas <- seq(0, 1, length.out = argv$n_alpha)
-  models <- DoGLMAlpha(
-    train_df,
-    "label",
-    alphas,
-    nfolds = as.numeric(argv$nfolds)
-  )
-  saveRDS(models, GetSavedModelFilename(model_use))
-  debug(logger, glue("{model_use} Model Training Done!"))
+  info(logger, "Running LASSO")
+  model_use <- "lasso"
+  if (CheckSavedModel(model_use)) {
+    info(logger, glue("Existing {model_use} model found. Importing Existing Model"))
+    models <- LoadSavedModel(model_use)
+  } else {
+    alphas <- seq(0, 1, length.out = argv$n_alpha)
+    models <- DoGLMAlpha(
+      train_df,
+      "label",
+      alphas,
+      nfolds = as.numeric(argv$nfolds)
+    )
+    saveRDS(models, GetSavedModelFilename(model_use))
+    debug(logger, glue("{model_use} Model Training Done!"))
+  }
 }
 
 ### SVM Model -----------------------------------------------------------------
@@ -730,6 +327,7 @@ if (CheckSavedModel(model_use)) {
   debug(logger, glue("{model_use} Model Training Done!"))
 }
 
+if (argv$categorical) cat("", file = here(output_path, "saved_models", "categorical"))
 ## Survival Analysis --------------------------------------------------------
 
 info(logger, "Doing Survival Analysis")

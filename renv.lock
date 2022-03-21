@@ -11,6 +11,11 @@
   "Bioconductor": {
     "Version": "3.13"
   },
+  "Python": {
+    "Version": "3.7.12",
+    "Type": "virtualenv",
+    "Name": "./renv/python/virtualenvs/renv-python-3.7"
+  },
   "Packages": {
     "AnnotationDbi": {
       "Package": "AnnotationDbi",
@@ -2087,17 +2092,7 @@
       "Version": "1.1-28",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Requirements": [
-        "MASS",
-        "Matrix",
-        "Rcpp",
-        "RcppEigen",
-        "boot",
-        "lattice",
-        "minqa",
-        "nlme",
-        "nloptr"
-      ]
+      "Requirements": []
     },
     "lmtest": {
       "Package": "lmtest",
@@ -3409,9 +3404,5 @@
       "Hash": "035d1c7c12593038c26fb1c2fd40c4d2",
       "Requirements": []
     }
-  },
-  "Python": {
-    "Version": "3.7.12",
-    "Type": "conda"
   }
 }
