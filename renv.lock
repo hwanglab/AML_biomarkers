@@ -13,8 +13,7 @@
   },
   "Python": {
     "Version": "3.7.12",
-    "Type": "virtualenv",
-    "Name": "./renv/python/virtualenvs/renv-python-3.7"
+    "Type": "conda"
   },
   "Packages": {
     "AnnotationDbi": {
