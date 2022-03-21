@@ -13,7 +13,7 @@ RUN apt-get install -y libcurl4-openssl-dev libhdf5-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/
 
-RUN R -e "install.packages(c('remotes', 'reticulate'), repos = c(CRAN = 'https://cloud.r-project.org'))"
+RUN R -e "install.packages('remotes', repos = c(CRAN = 'https://cloud.r-project.org'))"
 RUN --mount=type=secret,id=PAT \
     GITHUB_PAT=$(cat /run/secrets/PAT) \
     R -e "remotes::install_github('rstudio/renv@${RENV_VERSION}')"
@@ -37,7 +37,7 @@ RUN cp renv/.Rprofile .Rprofile
 RUN --mount=type=secret,id=PAT \
     --mount=type=cache,target=/buildx_cache/renv \
     GITHUB_PAT=$(cat /run/secrets/PAT) \
-    R -e 'reticulate::install_miniconda();renv::activate();renv::restore();renv::isolate()'
+    R -e 'install.packages("reticulate", repos = c(CRAN = "https://cloud.r-project.org"));reticulate::install_miniconda();renv::activate();renv::restore();renv::isolate()'
 
 RUN curl -fsSL https://code-server.dev/install.sh | sh
 
