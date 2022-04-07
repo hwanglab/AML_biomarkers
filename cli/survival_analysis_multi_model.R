@@ -172,7 +172,7 @@ data_names <- names(data) %>%
     set = map_chr(set, ~ .x[[1]]),
     data = data
   ) %>%
-  full_join(params, by = "set")
+  inner_join(params, by = "set")
 
 ### Prepare data for ML Methods ------------------------------------------------
 debug(logger, "Preparing data")
@@ -180,16 +180,24 @@ train_df <- CleanData(
   training,
   wbc = "wbc_at_diagnosis",
   efs = "event_free_survival_time_in_days",
-  status = "First Event"
+  status = "First Event",
+  time_unit = "months"
 ) %>%
   PrepareDataForML()
 
+# TODO: allow conversion of time to event from datasets.json
 input_params <- select(data_names, data, wbc, efs, status)
-data_names <- mutate(data_names, clean = pmap(input_params, ~ CleanData(..1, ..2, ..3, ..4)))
+data_names <- mutate(
+  data_names,
+  clean = pmap(
+    input_params,
+    ~ CleanData(..1, ..2, ..3, ..4, time_unit = "months")
+  )
+)
 
 data_names <- mutate(data_names, testing = map(clean, PrepareDataForML))
 
-if (!is.na(argv$additional_testing_sets)) {
+if (length(argv$additional_testing_sets) != 0) {
   debug(logger, "Adding addional testing sets")
   add_set <- filter(data_names, value %in% argv$additional_testing_sets) %>% pull(testing)
   add_set <- append(add_set, list(train_df))
@@ -198,25 +206,22 @@ if (!is.na(argv$additional_testing_sets)) {
 
 ##### LASSO Model --------------------------------------------------------------
 
-if (categorical) {
-  models <- list()
+info(logger, "Running LASSO")
+model_use <- "lasso"
+if (CheckSavedModel(model_use)) {
+  info(logger, glue("Existing {model_use} model found. Importing Existing Model"))
+  models <- LoadSavedModel(model_use)
 } else {
-  info(logger, "Running LASSO")
-  model_use <- "lasso"
-  if (CheckSavedModel(model_use)) {
-    info(logger, glue("Existing {model_use} model found. Importing Existing Model"))
-    models <- LoadSavedModel(model_use)
-  } else {
-    alphas <- seq(0, 1, length.out = argv$n_alpha)
-    models <- DoGLMAlpha(
-      train_df,
-      "label",
-      alphas,
-      nfolds = as.numeric(argv$nfolds)
-    )
-    saveRDS(models, GetSavedModelFilename(model_use))
-    debug(logger, glue("{model_use} Model Training Done!"))
-  }
+  alphas <- seq(0, 1, length.out = argv$n_alpha)
+  models <- DoGLMAlpha(
+    train_df,
+    "label",
+    alphas,
+    nfolds = as.numeric(argv$nfolds),
+    k = 1000
+  )
+  saveRDS(models, GetSavedModelFilename(model_use))
+  debug(logger, glue("{model_use} Model Training Done!"))
 }
 
 ### SVM Model -----------------------------------------------------------------
@@ -270,61 +275,6 @@ if (CheckSavedModel(model_use)) {
   debug(logger, glue("{model_use} Model Training Done!"))
 }
 
-### Neural Network Regression --------------------------------------------------
-
-info(logger, "Running Neural Network Regression")
-
-CallbackLogger <- callback_lambda(
-  on_epoch_end = function(epoch, logs) {
-    if (epoch %% 100 == 0 && epoch != 0) info(logger, glue("{epoch} epochs finished"))
-  }
-)
-StopTrainingEarly <- callback_early_stopping(monitor = "val_loss", patience = 20)
-
-BuildNN <- function(dataset, spec) {
-  input <- layer_input_from_dataset(train_df %>% select(-label))
-
-  output <- input %>%
-    layer_dense_features(dense_features(spec_f)) %>%
-    layer_dense(units = 64, activation = "relu") %>%
-    layer_dense(units = 64, activation = "relu") %>%
-    layer_dense(units = 16, activation = "relu") %>%
-    layer_dense(units = 1)
-
-  model <- keras_model(input, output)
-
-  model %>%
-    compile(
-      loss = "mse",
-      optimizer = optimizer_nadam(learning_rate = 0.1),
-      metrics = list("mean_absolute_error")
-    )
-  return(model)
-}
-
-model_use <- "nn_regression"
-if (CheckSavedModel(model_use)) {
-  info(logger, glue("Existing {model_use} model found. Importing Existing Model"))
-  models[[model_use]] <- LoadSavedModel(model_use)
-  write_invoke <- FALSE
-} else {
-  spec_f <- feature_spec(train_df, !contains("label"), label) %>%
-    step_numeric_column(all_numeric(), normalizer_fn = scaler_min_max()) %>%
-    fit()
-  models[[model_use]] <- BuildNN(train_df, spec_f)
-  training_output <- models[[model_use]] %>%
-    fit(
-      x = train_df %>% select(-label),
-      y = train_df$label,
-      epochs = 100,
-      validation_split = 0.2,
-      verbose = 0,
-      callbacks = list(CallbackLogger, StopTrainingEarly)
-    )
-  # save_model_hdf5(models[[model_use]], GetSavedModelFilename(model_use))
-  debug(logger, glue("{model_use} Model Training Done!"))
-}
-
 if (argv$categorical) cat("", file = here(output_path, "saved_models", "categorical"))
 ## Survival Analysis --------------------------------------------------------
 
@@ -339,13 +289,15 @@ data_names <- data_names %>%
 models <- map(models, CheckLASSOValidity)
 
 for (i in seq_along(models)) {
+  debug(logger, glue("Running cox survival with {class(models[[i]])}"))
+  palette <- c("#F9DC5C", "#011936")
   model_outs <- data_names %>%
     mutate(
       scores = map(clean, ~ CalcualteScoreFromModel(.x, models[[i]])),
       surv_data_bound = map2(surv_data, scores, bind_cols),
       fits = map(
         surv_data_bound,
-        ~ survminer::surv_fit(Surv(efs, code) ~ score_bin, data = .x)
+        ~ survminer::surv_fit(Surv(time, code) ~ score_bin, data = .x)
       ),
       plots = map2(
         fits,
@@ -356,20 +308,34 @@ for (i in seq_along(models)) {
           xlab = "Survival Time",
           font.subtitle = 8,
           subtitle = .y,
-          risk.table = "abs_pct"
+          risk.table = "absolute",
+          palette = palette
         )
       ),
       code_u = map_dbl(surv_data_bound, ~ length(unique(.x[["code"]]))),
       sco_bin_u = map_dbl(surv_data_bound, ~ length(unique(.x[["score_bin"]])))
     )
+  notify_failures <- filter(model_outs, code_u <= 1 | sco_bin_u <= 1) %>%
+    pull(value)
   model_outs <- filter(model_outs, code_u > 1, sco_bin_u > 1) %>%
     mutate(
       stat_out = map(
         surv_data_bound,
-        ~ survival::coxph(Surv(efs, code) ~ score_bin, data = .x)
+        ~ survival::coxph(Surv(time, code) ~ score_bin, data = .x)
       ) %>%
         map(broom::tidy)
     )
+
+  if (length(notify_failures) > 0) {
+    excluded_sets <- glue_collapse(notify_failures, sep = ", ", last = ", ")
+    warn(
+      logger,
+      glue(
+        "The following datasets could not be dicotamized \\
+        and are excluded: {excluded_sets}"
+      )
+    )
+  }
 
   stat_res <- select(model_outs, stat_out, where(is_character)) %>%
     unnest_wider(stat_out)
@@ -378,6 +344,21 @@ for (i in seq_along(models)) {
   pdf(glue("{plots_path}/{names(models)[[i]]}_survival.pdf"))
   print(pull(model_outs, plots))
   graphics.off()
+
+  debug(logger, "Setting up TARGET Data...")
+  surv_form <- Surv(time, code) ~
+  score_bin + AR + `WT1 mutation` +
+    `NPM mutation` + `CEBPA mutation`
+  target_data <- filter(model_outs, value == "TARGET:FLT3")
+  target_res <- mutate(target_data,
+    forest_data = map2(data, surv_data_bound, SetupTARGETData),
+    fits = map(forest_data, ~ coxph(surv_form, data = .x)),
+    stat = map(fits, broom::tidy)
+  ) %>%
+    select(stat, where(is_character)) %>%
+    unnest_auto(stat) %>%
+    unnest(cols = c(term, estimate, std.error, statistic, p.value))
+  write_tsv(target_res, glue("{output_path}/{names(models)[[i]]}_cox_mutation_survival.tsv"))
 }
 
 ### Write Invocation -----------------------------------------------------------
