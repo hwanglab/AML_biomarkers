@@ -141,73 +141,75 @@ RunGSVA <- function(seurat, gene_sets, assay = NULL, slot = "data", features = N
 
 
 RunStats <- function(res, pathway, p = 0.05, fc = 0.25) {
-    res <- res[ , colnames(res) != "all"]
-    all <- res[ , colnames(res) == "all"]
-    clusters <- colnames(res) %>%
-        tibble::as_tibble_col(column_name = "names") %>%
-        tidyr::separate(names, into = c("cluster", "rep"), sep = "_") %>%
-        dplyr::pull(cluster) %>%
-        unique()
-    top <- list(0)
-    plot <- list(0)
-    for (i in seq_along(clusters)) {
-        new_names <- colnames(res) %>%
-            tibble::as_tibble_col(column_name = "names") %>%
-            tidyr::separate(names, into = c("cluster", "rep"), sep = "_") %>%
-            dplyr::group_by(
-                cluster2 = ifelse(
-                    cluster == clusters[[i]],
-                    yes = paste0("cluster", clusters[[i]]),
-                    no = paste0("not", clusters[[i]])
-                )
-            ) %>%
-            dplyr::mutate(rep2 = dplyr::row_number())
-        design <- model.matrix(~ 0 + new_names$cluster2)
-        colnames(design) <- colnames(design) %>% str_remove("new_names\\$cluster2")
-        con_str <- c(paste0(
-            "cluster", clusters[[i]], " - not",
-            clusters[[i]]
-        ))
-        contrasts <- limma::makeContrasts(
-            contrasts = con_str,
-            levels = design
+  all <- res[, colnames(res) == "all", drop = FALSE]
+  res <- res[, colnames(res) != "all"]
+
+  clusters <- colnames(res) %>%
+    tibble::as_tibble_col(column_name = "names") %>%
+    tidyr::separate(names, into = c("cluster", "rep"), sep = "_") %>%
+    dplyr::pull(cluster) %>%
+    unique()
+  top <- list(0)
+  plot <- list(0)
+  for (i in seq_along(clusters)) {
+    new_names <- colnames(res) %>%
+      tibble::as_tibble_col(column_name = "names") %>%
+      tidyr::separate(names, into = c("cluster", "rep"), sep = "_") %>%
+      dplyr::group_by(
+        cluster2 = ifelse(
+          cluster == clusters[[i]],
+          yes = paste0("cluster", clusters[[i]]),
+          no = paste0("not", clusters[[i]])
         )
-        fit <- limma::lmFit(res, design)
-        fit <- limma::contrasts.fit(fit, contrasts = contrasts)
-        fit <- limma::eBayes(fit)
-        top[[i]] <- limma::topTable(fit, n = Inf) %>%
-          mutate(cluster = clusters[[i]])
-        labs <- stringr::str_remove(rownames(top[[i]]), "^(GOBP|HALLMARK|KEGG|REACTOME)_")
-        plot[[i]] <- EnhancedVolcano::EnhancedVolcano(top[[i]],
-            lab = labs, x = "logFC", y = "adj.P.Val", subtitle = paste0(
-                "Cluster ",
-                clusters[[i]]
-            ), title = paste0(
-                "GSVA results for ",
-                pathway
-            ), pCutoff = p, FCcutoff = fc, xlim = c(
-                -1,
-                1
-            ), labSize = 1.75, drawConnectors = TRUE
-        )
-    }
-    top <- top %>%
-        purrr::map(rownames_to_column, var = "geneset") %>%
-        purrr::reduce(bind_rows) %>%
-        mutate(AveExpr = 2^AveExpr)
-    fake_top <- all %>%
-      as_tibble() %>%
-        set_names(c("AveExpr")) %>%
-        rownames_to_column(var = "geneset") %>%
-        mutate(
-            logFC = 1,
-            t = logFC, 
-            P.Value = 0,
-            adj.P.value = P.Value,
-            B = AveExpr,
-            cluster = "all"
-        )
-    top <- bind_rows(top, fake_top)
-    plots <- patchwork::wrap_plots(plot)
-    return(list(`Top Table` = top, plots = plot))
+      ) %>%
+      dplyr::mutate(rep2 = dplyr::row_number())
+    design <- model.matrix(~ 0 + new_names$cluster2)
+    colnames(design) <- colnames(design) %>% str_remove("new_names\\$cluster2")
+    con_str <- c(paste0(
+      "cluster", clusters[[i]], " - not",
+      clusters[[i]]
+    ))
+    contrasts <- limma::makeContrasts(
+      contrasts = con_str,
+      levels = design
+    )
+    fit <- limma::lmFit(res, design)
+    fit <- limma::contrasts.fit(fit, contrasts = contrasts)
+    fit <- limma::eBayes(fit)
+    top[[i]] <- limma::topTable(fit, n = Inf) %>%
+      mutate(cluster = clusters[[i]])
+    labs <- stringr::str_remove(rownames(top[[i]]), "^(GOBP|HALLMARK|KEGG|REACTOME)_")
+    plot[[i]] <- EnhancedVolcano::EnhancedVolcano(
+      top[[i]],
+      lab = labs,
+      x = "logFC",
+      y = "adj.P.Val",
+      subtitle = paste0("Cluster ", clusters[[i]]),
+      title = paste0("GSVA results for ", pathway),
+      pCutoff = p,
+      FCcutoff = fc,
+      xlim = c(-1, 1),
+      labSize = 1.75,
+      drawConnectors = TRUE
+    )
+  }
+  top <- top %>%
+    purrr::map(rownames_to_column, var = "geneset") %>%
+    purrr::reduce(bind_rows) %>%
+    mutate(AveExpr = 2^AveExpr)
+  fake_top <- all %>%
+    as.data.frame() %>%
+    set_names(c("AveExpr")) %>%
+    rownames_to_column(var = "geneset") %>%
+    mutate(
+      logFC = 1,
+      t = logFC,
+      P.Value = 0,
+      adj.P.Val = P.Value,
+      B = AveExpr,
+      cluster = "all"
+    )
+  top <- bind_rows(top, fake_top)
+  plots <- patchwork::wrap_plots(plot)
+  return(list(`Top Table` = top, plots = plots))
 }
