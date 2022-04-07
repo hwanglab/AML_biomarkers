@@ -44,7 +44,6 @@ argv <- parser$parse_args()
 # load more libraries
 suppressPackageStartupMessages({
   library(here)
-  suppressWarnings(library(rsinglecell))
   library(pheatmap)
   library(readxl)
   library(tidyverse)
@@ -74,7 +73,7 @@ names(data) <- sheet_names
 
 if (!any(is.na(argv$clusters))) {
   info(logger, "Selecting Clusters")
-  data_filtered <- map(data, filter, cluster %in% argv$clusters)
+  data_filtered <- map(data, filter, cluster %in% c(argv$clusters, "all_cells"))
   file_name_ext <- paste0(argv$clusters, collapse = "_")
 } else {
   data_filtered <- data
@@ -89,8 +88,6 @@ GetSignificantGeneSets <- function(df, p = 0.01) {
 
 if (argv$filter_genesets) {
   info(logger, "Selecting Gene Sets")
-
-  # p <- if_else(is.na(argv$p_value), 0.01, argv$p_value, missing = 0.01)
   p <- argv$p_value
   debug(logger, paste0("--p-value is parsed as: ", argv$p_value, "."))
   info(logger, paste0("p is set to ", p, "."))
@@ -107,8 +104,8 @@ if (argv$filter_genesets) {
 }
 
 data_filtered <- data_filtered %>%
-  map(select, geneset, logFC, cluster) %>%
-  map(pivot_wider, names_from = cluster, values_from = logFC) %>%
+  map(select, geneset, AveExpr, cluster) %>%
+  map(pivot_wider, names_from = cluster, values_from = AveExpr) %>%
   map(column_to_rownames, var = "geneset") %>%
   map(as.matrix)
 
@@ -123,7 +120,7 @@ for (i in seq_along(data_filtered)) {
     color = viridis::magma(n = 100),
     fontsize_row = 5,
     cellwidth = 10,
-    filename = here(plots_path, filename),
+    filename = here(plots_path, "GSVA", filename),
     cluster_rows = !argv$filter_genesets,
     cluster_cols = cluster_cols
   )

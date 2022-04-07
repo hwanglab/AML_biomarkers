@@ -13,10 +13,26 @@
 				"echo": true,
 				"reveal": "never",
 				"focus": false,
-				"panel": "dedicated",
+				"panel": "shared",
 				"showReuseMessage": false,
 				"clear": false
 			}
-		}
+		},
+			{
+				"label": "R: Style Directory",
+				"command": "Rscript",
+				"args": [
+					".vscode/style_dir.r"
+				],
+				"problemMatcher": [],
+				"presentation": {
+					"echo": true,
+					"reveal": "never",
+					"focus": false,
+					"panel": "shared",
+					"showReuseMessage": false,
+					"clear": false
+				}
+			}
 	]
 }
