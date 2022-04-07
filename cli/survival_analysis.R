@@ -339,13 +339,11 @@ logger <- logger(threshold = argv$verbose)
 
 if (argv$dir == "") {
   output_path <- paste0("outs/", argv$id)
-  plots_path <- paste0("plots/", argv$id)
 } else {
   output_path <- paste0(parser$run_dir, "/outs/", argv$id)
-  plots_path <- paste0(parser$run_dir, "/plots/", argv$id)
 }
 
-data_filename <- here(output_path, glue("cache/clinical_deconvoluted.rds") )
+data_filename <- here(output_path, glue("cache/clinical_deconvoluted.rds"))
 
 if (argv$test_id == "incremental") {
   dir_names <- list.dirs(here(output_path), full.names = FALSE)
@@ -372,30 +370,20 @@ if (argv$test_id == "incremental") {
   new_name <- max(dir_names, na.rm = TRUE) + 1
   info(logger, c("Using ", new_name, " as the test id"))
   output_path <- here(output_path, new_name)
-  plots_path <- here(plots_path, new_name)
   dir.create(output_path, showWarnings = FALSE)
-  dir.create(plots_path, recursive = TRUE, showWarnings = FALSE)
 } else {
   output_path <- here(output_path, argv$test_id)
-  plots_path <- here(plots_path, argv$test_id)
-  # if (dir.exists(output_path)) {
-  #   info(logger, "The specified test_id has been used. Padding with date")
-  #   time <- Sys.time()
-  #   argv$test_id <- glue("{argv$test_id}/{time}")
-  #   output_path <- here(output_path, time)
-  #   plots_path <- here(plots_path, time)
-  #   debug(logger, plots_path)
-  #   debug(logger, output_path)
-  # }
   info(logger, c("Using ", argv$test_id, " as the test id"))
   dir.create(output_path, showWarnings = FALSE, recursive = TRUE)
-  dir.create(plots_path, recursive = TRUE, showWarnings = FALSE)
 }
 
 if (!dir.exists(here(output_path))) {
   fatal(logger, "Output directory does not exist")
   quit(status = 1)
 }
+
+plots_path <- here(output_path, "plots")
+dir.create(plots_path, recursive = TRUE, showWarnings = FALSE)
 
 debug(logger, paste0("Importing Data from: ", data_filename))
 
@@ -557,7 +545,9 @@ SetupTARGETData <- function(df) {
 debug(logger, "Setting up TARGET Data...")
 target_data <- map(target_data, SetupTARGETData)
 
-surv_form <- Surv(`Event Free Survival Time in Days`, event) ~ score_bin_median + flt3_ratio + MRD_end + `WT1 mutation`
+surv_form <- Surv(`Event Free Survival Time in Days`, event) ~ 
+  score_bin_median + flt3_ratio + `WT1 mutation` + `c-Kit Mutation Exon 8` + 
+  `c-Kit Mutation Exon 17` + `NPM mutation` + `CEBPA mutation` + `MLL`
 
 palette <- c("#E7B800", "#2E9FDF")
 fits <- coxph(surv_form, data = target_data$`FLT3`)

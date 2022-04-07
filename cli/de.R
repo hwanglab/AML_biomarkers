@@ -60,12 +60,11 @@ logger <- logger(threshold = argv$verbose)
 
 if (argv$dir == "") {
   output_path <- paste0("outs/", argv$id)
-  plots_path <- paste0("plots/", argv$id)
 } else {
   output_path <- paste0(parser$dir, "/outs/", argv$id)
-  plots_path <- paste0(parser$dir, "/plots/", argv$id)
 }
 
+plots_path <- here(output_path, "plots")
 
 if (!dir.exists(here(plots_path))) {
   debug(logger, "Plots directory is being created")

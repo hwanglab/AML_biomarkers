@@ -234,11 +234,11 @@ if (argv$id == "time") argv$id <- format(Sys.time(), format = "%m-%d-%Y[%H-%M]")
 
 if (argv$dir == "") {
   output_path <- paste0("outs/", argv$id)
-  plots_path <- paste0("plots/", argv$id)
 } else {
   output_path <- paste0(parser$run_dir, "/outs/", argv$id)
-  plots_path <- paste0(parser$run_dir, "/plots/", argv$id)
 }
+
+plots_path <- here(output_path, "plots")
 
 debug(logger, paste0("Writing Outputs to: ", here(output_path)))
 

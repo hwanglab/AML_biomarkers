@@ -61,13 +61,13 @@ logger <- logger(threshold = argv$verbose)
 
 if (argv$dir == "") {
   output_path <- paste0("outs/", argv$id)
-  plots_path <- paste0("plots/", argv$id)
 } else {
   output_path <- paste0(parser$run_dir, "/outs/", argv$id)
-  plots_path <- paste0(parser$run_dir, "/plots/", argv$id)
 }
 bc_ext <- "no_bc"
 if (argv$batch_correct) bc_ext <- argv$batch_correct_method
+
+plots_path <- here(output_path, "plots")
 
 # Plan
 # get pathway genes

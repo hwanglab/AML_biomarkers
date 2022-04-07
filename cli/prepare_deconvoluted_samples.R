@@ -49,10 +49,8 @@ suppressPackageStartupMessages({
 
 if (argv$dir == "") {
   output_path <- paste0("outs/", argv$id)
-  plots_path <- paste0("plots/", argv$id)
 } else {
   output_path <- paste0(parser$run_dir, "/outs/", argv$id)
-  plots_path <- paste0(parser$run_dir, "/plots/", argv$id)
 }
 if (!dir.exists(here(output_path))) {
   fatal(logger, "Output directory does not exist")

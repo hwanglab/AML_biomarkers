@@ -42,7 +42,7 @@ parser$add_argument(
 )
 
 
-argv <- parser$parse_args(c("-i", "flt3_cebpa_stem_bc", "flt3_cebpa_nonstem_bc", "-G", "lsc_genesets.gmt"))
+argv <- parser$parse_args()
 
 # load more libraries
 suppressPackageStartupMessages({
@@ -60,22 +60,21 @@ suppressPackageStartupMessages({
 
 logger <- logger(threshold = argv$verbose)
 
-
 if (argv$dir == "") {
   output_path <- paste0("outs")
-  plots_path <- paste0("plots")
 } else {
-  output_path <- paste0(parser$run_dir, "/outs")
-  plots_path <- paste0(parser$run_dir, "/plots")
-}
-
-if (!dir.exists(here(plots_path))) {
-  debug(logger, "Plots directory is being created")
-  dir.create(here(plots_path))
+  output_path <- paste0(argv$run_dir, "/outs")
 }
 
 if (!dir.exists(here(output_path))) {
   fatal(logger, "Output directory does not exist")
+}
+
+plots_path <- here(output_path, "plots")
+
+if (!dir.exists(here(plots_path))) {
+  debug(logger, "Plots directory is being created")
+  dir.create(here(plots_path))
 }
 
 # read in data

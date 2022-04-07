@@ -56,21 +56,19 @@ suppressWarnings({
     library(xfun)
     library(granulator)
     library(log4r)
-    library(rsinglecell)
     library(tidyverse)
   })
 })
 
 if (argv$dir == "") {
   output_path <- paste0("outs/", argv$id)
-  plots_path <- paste0("plots/", argv$id)
 } else {
   output_path <- paste0(parser$run_dir, "/outs/", argv$id)
-  plots_path <- paste0(parser$run_dir, "/plots/", argv$id)
 }
 if (!dir.exists(here(output_path))) {
   fatal(logger, "Output directory does not exist")
 }
+plots_path <- here(output_path, "plots")
 
 logger <- logger(threshold = argv$verbose)
 
@@ -95,7 +93,7 @@ refs <- cache_rds(
     ref <- FindAllMarkers(
       diagnosis,
       max.cells.per.ident = argv$num_cells,
-      test.use = "MAST"
+      test.use = "DESeq2"
     )$result
     info(logger, "Expression Testing Done")
     ref2 <- ref[ref$p_val_adj <= 0.05 & abs(ref$avg_log2FC) >= 0.25, "gene"]

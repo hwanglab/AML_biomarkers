@@ -105,12 +105,12 @@ logger <- logger(threshold = argv$verbose)
 if (argv$dir == "") {
   output_path <- paste0("outs/", argv$id)
   output_path_root <- output_path
-  plots_path <- paste0("plots/", argv$id)
 } else {
   output_path <- paste0(parser$run_dir, "/outs/", argv$id)
   output_path_root <- output_path
-  plots_path <- paste0(parser$run_dir, "/plots/", argv$id)
 }
+
+plots_path <- here(output_path, "plots")
 
 if (argv$test_id == "incremental") {
   dir_names <- list.dirs(here(output_path), full.names = FALSE)
