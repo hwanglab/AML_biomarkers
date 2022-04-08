@@ -21,9 +21,8 @@ tcga_sam <- colnames(tcga_data) %>%
   left_join(tcga_ann_sam) %>%
   remove_missing() %>%
   distinct() %>%
-  pull(`Case ID`) 
+  pull(`Case ID`)
 colnames(tcga_data) <- c("ensembl_gene_id_version", tcga_sam)
 
 tcga_data <- EnsemblToHGNC(tcga_data, "ensembl_gene_id_version")
 write_tsv(tcga_data, file = here("cibersort_in/tcga_cibersort.tsv"))
-

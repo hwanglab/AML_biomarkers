@@ -1,6 +1,5 @@
 library(here)
 library(tidyverse)
-library(rsinglecell)
 
 beat_aml <- read_tsv(here("data/aml_ohsu_2018/data_RNA_Seq_expression_cpm.txt"))
 
