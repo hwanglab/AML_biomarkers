@@ -84,7 +84,7 @@ suppressPackageStartupMessages({
   library(glue)
 })
 
-renv::use_python()
+renv::use_python(type = "conda")
 
 source(here("cli/lib/utils.R"))
 source(here("cli/lib/lasso.R"))
