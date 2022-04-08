@@ -84,9 +84,11 @@ debug(logger, paste0("Importing Data from: ", data_filename))
 diagnosis <- readRDS(data_filename)
 
 # set plan
+
 if (argv$cores == 1) {
   plan("sequential")
 } else {
+  if (argv$cores == 0) argv$cores <- availableCores()
   plan("multisession", workers = argv$cores)
 }
 
