@@ -54,14 +54,14 @@ logger <- logger(threshold = argv$verbose)
 
 if (argv$dir == "") {
   output_path <- paste0("outs/", argv$id)
-  plots_path <- paste0("plots/", argv$id)
 } else {
   output_path <- paste0(parser$run_dir, "/outs/", argv$id)
-  plots_path <- paste0(parser$run_dir, "/plots/", argv$id)
 }
 if (!dir.exists(here(output_path))) {
   fatal(logger, "Output directory does not exist")
 }
+
+plots_path <- here(output_path, "plots")
 
 # read in data
 data_filename <- here(output_path, "GSVA_DE_results.xlsx")
@@ -104,8 +104,8 @@ if (argv$filter_genesets) {
 }
 
 data_filtered <- data_filtered %>%
-  map(select, geneset, AveExpr, cluster) %>%
-  map(pivot_wider, names_from = cluster, values_from = AveExpr) %>%
+  map(select, geneset, logFC, cluster) %>%
+  map(pivot_wider, names_from = cluster, values_from = logFC) %>%
   map(column_to_rownames, var = "geneset") %>%
   map(as.matrix)
 
