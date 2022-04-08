@@ -127,15 +127,22 @@ beat_aml_decon <- beat_aml_decon %>%
   left_join(beat_aml_clinical2, by = c("Mixture" = "SAMPLE_ID")) %>%
   filter(FLT3_ITD_CONSENSUS_CALL == "Positive")
 debug(logger, "Filtering data and saving results")
+target_neg <- filter(
+  target_deconvoluted,
+  `FLT3/ITD positive?` == "no"
+)
+yes <- c("Yes", "yes", "YES")
+cyto_other_exclude <- c("unknown", "normal", "mll")
 deconvoluted <- list(
   TRAIN = split$train,
   "TARGET:FLT3" = split$test,
-  "TARGET:NEG" = filter(
-    target_deconvoluted,
-    `FLT3/ITD positive?` == "no",
-    `CEBPA mutation` == "no"
-  ),
-  "TARGET:CEBPA" = filter(target_deconvoluted, `CEBPA mutation` == "yes"),
+  "TARGET:NEG" = target_neg,
+  "TARGET:CEBPA" = filter(target_neg, `CEBPA mutation` == "yes"),
+  "TARGET:NPM1" = filter(target_neg, `NPM mutation` %in% yes),
+  "TARGET:WT1" = filter(target_neg, `WT1 mutation` %in% yes),
+  "TARGET:Cyto_norm" = filter(target_neg, `Primary Cytogenetic Code` == "normal"),
+  "TARGET:Cyto_MLL" = filter(target_neg, `Primary Cytogenetic Code` == "mll"),
+  "TARGET:Cyto_other" = filter(target_neg, !(`Primary Cytogenetic Code` %in% cyto_other_exclude)),
   "BeatAML:FLT3" = beat_aml_decon,
   "TCGA:FLT3" = tcga_deconvoluted
 )
