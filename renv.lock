@@ -11,6 +11,10 @@
   "Bioconductor": {
     "Version": "3.13"
   },
+  "Python": {
+    "Version": "3.7.12",
+    "Type": "conda"
+  },
   "Packages": {
     "AnnotationDbi": {
       "Package": "AnnotationDbi",
