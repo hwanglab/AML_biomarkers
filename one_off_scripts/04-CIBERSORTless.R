@@ -1,17 +1,22 @@
 ## Figure 2 of Paper
 
 library(here)
-library(rsinglecell)
 library(readxl)
 library(survival)
 library(survminer)
 library(scorecard)
 library(glmnet)
+library(data.table)
 library(tidyverse)
+
+source(here("cli/lib/lasso.R"))
+source(here("cli/lib/utils.R"))
 
 target <- read_tsv(file = here("cibersort_in/target_data.txt"))
 val <- read_excel(here("clinical_info/TARGET_AML_ClinicalData_Validation_20181213.xlsx"))
 dis <- read_excel(here("clinical_info/TARGET_AML_ClinicalData_Discovery_20181213.xlsx"))
+
+signature <- read_table("data/lsc_de_ng_et_al.txt", col_names = FALSE)[[1]]
 
 clinical <- bind_rows(val, dis) %>%
   distinct() %>%
@@ -25,9 +30,22 @@ clinical2 <- dplyr::select(
   `Overall Survival Time in Days`
 )
 
+rn <- target[[1]]
+cn <- colnames(target)
+
+target <- target[, -1]
+
+rownames(target) <- colnames(target) <- NULL
+
 target_before_split <- target %>%
-  transposeDF() %>%
-  mutate(across(.cols = !matches("samples"), .fns = as.numeric)) %>%
+  as.data.table() %>%
+  transpose() %>%
+  as_tibble() %>%
+  set_names(rn) %>%
+  mutate(
+    across(.fns = as.numeric),
+    samples = cn[-1]
+  ) %>%
   separate(col = "samples", into = c(NA, NA, "patient_id", NA, NA)) %>%
   inner_join(clinical2) %>%
   mutate(across(where(is_character), str_to_lower)) %>%
@@ -43,76 +61,49 @@ target_split <- split_df(
 )
 
 ## Train on TARGET (train) ----
-lasso_model <- DoLassoModel(
-  target_split$train,
-  `Event Free Survival Time in Days`,
-  exclude = c(where(is_character), starts_with("Overall"))
-)
+training <- target_split$train %>%
+  select(any_of(signature), `Event Free Survival Time in Days`)
+lasso_model <- DoGLMAlpha(
+  training, "Event Free Survival Time in Days", 1, 10,
+  k = 1000, save = FALSE
+)[[1]]
 
-coef(lasso_model)
-coef(lasso_model)[coef(lasso_model)[, 1] != 0, , drop = FALSE]
 
-target_split$train <- target_split$train %>%
-  as_tibble() %>%
-  mutate(
-    status = if_else(`First Event` == "relapse", 1, 0),
-    `First Event` = NULL
-  ) %>%
-  mutate(
-    score = UseLASSOModelCoefs(cur_data(), coef(lasso_model)),
-    score_bin = if_else(score >= median(score), "High", "Low")
-  )
 
-target_train <- DoSurvivalAnalysis(
-  target_split$train,
-  `Event Free Survival Time in Days`,
-  status,
-  score,
-  group_by = score_bin,
-  description = "TARGET Training",
-  lasso = lasso_model
-)
 
-target_train_os <- DoSurvivalAnalysis(
-  target_split$train,
-  `Overall Survival Time in Days`,
-  status,
-  score,
-  group_by = score_bin,
-  description = "TARGET Training",
-  lasso = lasso_model
-)
+
+
 ## Test on TARGET (test) ----
-target_split$test <- target_split$test %>%
+test <- target_split$test %>%
   as_tibble() %>%
   mutate(
     status = if_else(`First Event` == "relapse", 1, 0),
     `First Event` = NULL
   ) %>%
   mutate(
-    score = UseLASSOModelCoefs(cur_data(), coef(lasso_model)),
+    score = predict(lasso_model, cur_data()),
     score_bin = if_else(score >= median(score), "High", "Low")
   )
 
-target_test <- DoSurvivalAnalysis(
-  target_split$test,
-  `Event Free Survival Time in Days`,
-  status,
-  score,
-  group_by = score_bin,
-  description = "TARGET Test",
-  lasso = lasso_model
-)
+fit <- survfit(Surv(`Event Free Survival Time in Days`, status) ~ score_bin, data = test)
 
-target_test_os <- DoSurvivalAnalysis(
-  target_split$test,
-  `Overall Survival Time in Days`,
-  status,
-  score,
-  group_by = score_bin,
-  description = "TARGET Test",
-  lasso = lasso_model
+
+
+
+coxph(Surv(`Event Free Survival Time in Days`, status) ~ score_bin, data = test)
+
+pdf("plots/LSC48_prediction.pdf")
+survminer::ggsurvplot(
+  fit,
+  ylab = "Survival Probability",
+  pval = T,
+  xlab = "Survival Time",
+  font.subtitle = 8,
+  risk.table = "abs_pct",
+  palette = c("#E06C9F", "#23395B"),
+  conf.int = TRUE
 )
+graphics.off()
 
 ## Test on TCGA ----
 
@@ -219,3 +210,8 @@ write_tsv(
   stat_res,
   here("outs/TARGET_LASSO_model_survival_without_CIBERSORTx.tsv")
 )
+
+
+# Ng et al signature -----------------------------------------------------------
+
+signature <- read_table("data/lsc_de_ng_et_al.txt", col_names = FALSE)[[1]]

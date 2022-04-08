@@ -2,12 +2,12 @@ library(SeuratDisk)
 library(Seurat)
 
 seurat <- LoadH5Seurat(
-    "data/preprocessed.h5Seurat",
-    assays = c("SCT", "RNA"),
-    reductions = FALSE,
-    graphs = FALSE,
-    neighbors = FALSE,
-    verbose = FALSE
+  "data/preprocessed.h5Seurat",
+  assays = c("SCT", "RNA"),
+  reductions = FALSE,
+  graphs = FALSE,
+  neighbors = FALSE,
+  verbose = FALSE
 )
 
 genes <- c("CD117", "CD38", "CD34")
