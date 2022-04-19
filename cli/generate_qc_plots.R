@@ -2,7 +2,7 @@
 library(argparse)
 
 # parse args
-parser <- ArgumentParser("Do Differential Expression")
+parser <- ArgumentParser("Make single-cell Quality Control Plots")
 parser$add_argument(
   "--dir",
   "-d",
@@ -22,8 +22,6 @@ parser$add_argument(
   choices = c("DEBUG", "INFO", "WARN", "ERROR")
 )
 
-
-
 argv <- parser$parse_args()
 
 # load more libraries
@@ -31,6 +29,7 @@ suppressPackageStartupMessages({
   library(here)
   library(future)
   library(Seurat)
+  library(patchwork)
   library(tidyverse)
   library(furrr)
   library(log4r)
@@ -50,10 +49,6 @@ if (!dir.exists(here(plots_path))) {
   dir.create(here(plots_path))
 }
 
-if (!dir.exists(here(output_path))) {
-  fatal(logger, "Output directory does not exist")
-}
-
 data_filename <- list.files(
   path = here(output_path, "cache/"),
   full.names = TRUE,
@@ -65,16 +60,29 @@ if (length(data_filename) > 1) fatal("There is more than one cached object")
 debug(logger, paste0("Importing Data from: ", data_filename))
 seurat <- readRDS(data_filename)
 
-
 s <- cc.genes$s.genes
 g2m <- cc.genes$g2m.genes
 
 seurat <- CellCycleScoring(seurat, s.features = s, g2m.features = g2m)
 
-cell_cycle <- UMAPPlot(seurat, group.by = "Phase")
+cell_cycle1 <- UMAPPlot(seurat, group.by = "Phase")
+cell_cycle2 <- UMAPPlot(
+  seurat,
+  split.by = "Phase",
+  combine = FALSE,
+  cols = rep_len("black", length(unique(Idents(seurat))))
+) + NoLegend()
 
-plot1 <- FeatureScatter(seurat, feature1 = "nCount_RNA", feature2 = "percent.mt")
-plot2 <- FeatureScatter(seurat, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot1 <- FeatureScatter(
+  seurat,
+  feature1 = "nCount_RNA",
+  feature2 = "percent.mt"
+)
+plot2 <- FeatureScatter(
+  seurat,
+  feature1 = "nCount_RNA",
+  feature2 = "nFeature_RNA"
+)
 std_qc <- plot1 + plot2
 
 hvf_plot <- VariableFeaturePlot(seurat)
@@ -82,5 +90,6 @@ hvf_plot <- VariableFeaturePlot(seurat)
 pdf(here(glue("{plots_path}/QC_plots.pdf")))
 std_qc
 hvf_plot
-cell_cycle
+cell_cycle1
+cell_cycle2
 graphics.off()
