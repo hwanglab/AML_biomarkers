@@ -24,11 +24,13 @@ CleanData <- function(df, wbc = NULL, efs = NULL, status, time_unit = "days") {
     ) %>%
     select(starts_with("cluster"), time, status, days)
 
-  res <- clean %>%
-    as_tibble(.name_repair = "minimal") %>%
-    setNames(colnames(.)) %>%
-    remove_missing()
-
+  # Suppress "Removed n rows containing missing values." warnings
+  suppressWarnings(
+    res <- clean %>%
+      as_tibble(.name_repair = "minimal") %>%
+      setNames(colnames(.)) %>%
+      remove_missing()
+  )
   return(res)
 }
 
