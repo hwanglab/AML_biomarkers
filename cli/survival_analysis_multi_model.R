@@ -36,7 +36,7 @@ parser$add_argument(
   "--n-alpha",
   "-A",
   "-N",
-  help = "how many values for alpha for the GLM should be tested? [currently only use 0]",
+  help = "how many values for alpha for the GLM should be tested?",
   default = 2
 )
 parser$add_argument(
@@ -89,6 +89,10 @@ renv::use_python(type = "conda")
 source(here("cli/lib/utils.R"))
 source(here("cli/lib/lasso.R"))
 source(here("cli/lib/ml.R"))
+source(here("cli/lib/stat_helpers.R"))
+
+# source function from PR: https://github.com/kassambara/survminer/pull/582
+source(here("cli/lib/ggforest.R"))
 
 ##### Prepare Directory --------------------------------------------------------
 logger <- logger(threshold = argv$verbose)
@@ -179,7 +183,9 @@ data_names <- mutate(data_names, testing = map(clean, PrepareDataForML))
 
 if (length(argv$additional_testing_sets) != 0) {
   debug(logger, "Adding addional testing sets")
-  add_set <- filter(data_names, value %in% argv$additional_testing_sets) %>% pull(testing)
+  add_set <- data_names %>%
+    filter(value %in% argv$additional_testing_sets) %>%
+    pull(testing)
   add_set <- append(add_set, list(train_df))
   train_df <- reduce(add_set, bind_rows)
 }
@@ -189,7 +195,7 @@ if (length(argv$additional_testing_sets) != 0) {
 info(logger, "Running LASSO")
 model_use <- "lasso"
 if (CheckSavedModel(model_use)) {
-  info(logger, glue("Existing {model_use} model found. Importing Existing Model"))
+  info(logger, glue("Existing model found. Using that instead..."))
   models <- LoadSavedModel(model_use)
 } else {
   alphas <- seq(0, 1, length.out = argv$n_alpha)
@@ -209,11 +215,16 @@ if (CheckSavedModel(model_use)) {
 info(logger, "Running SVM")
 model_use <- "svm"
 if (CheckSavedModel(model_use)) {
-  info(logger, glue("Existing {model_use} model found. Importing Existing Model"))
+  info(logger, glue("Existing model found. Using that instead..."))
   models[[model_use]] <- LoadSavedModel(model_use)
   write_invoke <- FALSE
 } else {
-  models[[model_use]] <- svm(label ~ ., data = train_df, kernel = "polynomial", cost = 10)
+  models[[model_use]] <- svm(
+    label ~ .,
+    data = train_df,
+    kernel = "polynomial",
+    cost = 10
+  )
   saveRDS(models[[model_use]], GetSavedModelFilename(model_use))
   debug(logger, glue("{model_use} Model Training Done!"))
 }
@@ -223,7 +234,7 @@ if (CheckSavedModel(model_use)) {
 info(logger, "Running Random Forests")
 model_use <- "rf"
 if (CheckSavedModel(model_use)) {
-  info(logger, glue("Existing {model_use} model found. Importing Existing Model"))
+  info(logger, glue("Existing model found. Using that instead..."))
   models[[model_use]] <- LoadSavedModel(model_use)
   write_invoke <- FALSE
 } else {
@@ -246,7 +257,7 @@ if (CheckSavedModel(model_use)) {
 info(logger, "Running KNN Regression")
 model_use <- "knn_regression"
 if (CheckSavedModel(model_use)) {
-  info(logger, glue("Existing {model_use} model found. Importing Existing Model"))
+  info(logger, glue("Existing model found. Using that instead..."))
   models[[model_use]] <- LoadSavedModel(model_use)
   write_invoke <- FALSE
 } else {
@@ -299,11 +310,12 @@ for (i in seq_along(models)) {
     pull(value)
   model_outs <- filter(model_outs, code_u > 1, sco_bin_u > 1) %>%
     mutate(
-      stat_out = map(
+      stat = map(
         surv_data_bound,
         ~ survival::coxph(Surv(time, code) ~ score_bin, data = .x)
-      ) %>%
-        map(broom::tidy)
+      ),
+      stat_out = map(stat, broom::tidy),
+      liklihood_ratio = map_dbl(stat, AngrilyExtractLiklihoodRatio)
     )
 
   if (length(notify_failures) > 0) {
@@ -317,28 +329,71 @@ for (i in seq_along(models)) {
     )
   }
 
-  stat_res <- select(model_outs, stat_out, where(is_character)) %>%
-    unnest_wider(stat_out)
-  write_tsv(stat_res, glue("{output_path}/{names(models)[[i]]}_survival.tsv"))
+  debug(logger, "Create New Directories for models")
+  suppressWarnings({
+    new_out_path <- glue("{output_path}/{names(models)[[i]]}")
+    new_plot_path <- glue("{plots_path}/{names(models)[[i]]}")
+  })
 
-  pdf(glue("{plots_path}/{names(models)[[i]]}_survival.pdf"))
-  print(pull(model_outs, plots))
+  dir.create(new_out_path, showWarnings = TRUE)
+  dir.create(new_plot_path, showWarnings = TRUE)
+
+  model_outs %>%
+    select(where(is_character), liklihood_ratio, stat_out) %>%
+    unnest_wider(stat_out) %>%
+    write_tsv(glue("{new_out_path}/survival.tsv"))
+
+  pdf(glue("{new_plot_path}/survival.pdf"))
+  walk(pull(model_outs, plots), print)
   graphics.off()
 
   debug(logger, "Setting up TARGET Data...")
-  surv_form <- Surv(time, code) ~
-  score_bin + AR + `WT1 mutation` +
-    `NPM mutation` + `CEBPA mutation`
+  surv_form_no_score <- Surv(time, code) ~ AR +
+    `WT1 mutation` + `NPM mutation` + `CEBPA mutation`
+
+  surv_form <- Surv(time, code) ~ score_bin + AR +
+    `WT1 mutation` + `NPM mutation` + `CEBPA mutation`
+
   target_data <- filter(model_outs, value == "TARGET:FLT3")
+
+  target_res <- mutate(target_data,
+    forest_data = map2(data, surv_data_bound, SetupTARGETData)
+  )
+
+  fits1 <- map(target_res$forest_data, DoCox, surv_form)
+  fits2 <- map(target_res$forest_data, DoCox, surv_form_no_score)
+
+  fits1 <- transpose(fits1)
+  fits2 <- transpose(fits2)
+
   target_res <- mutate(target_data,
     forest_data = map2(data, surv_data_bound, SetupTARGETData),
-    fits = map(forest_data, ~ coxph(surv_form, data = .x)),
-    stat = map(fits, broom::tidy)
-  ) %>%
-    select(stat, where(is_character)) %>%
-    unnest_auto(stat) %>%
-    unnest(cols = c(term, estimate, std.error, statistic, p.value))
-  write_tsv(target_res, glue("{output_path}/{names(models)[[i]]}_cox_mutation_survival.tsv"))
+    stat1 = map(fits1[[1]], broom::tidy),
+    stat2 = map(fits2[[1]], broom::tidy)
+  )
+
+  suppressMessages(
+    target_res %>%
+      select(stat1, where(is_character)) %>%
+      unnest_auto(stat1) %>%
+      unnest(cols = c(term, estimate, std.error, statistic, p.value)) %>%
+      write_tsv(glue("{new_out_path}/cox_mutation_survival_with_score.tsv"))
+  )
+
+  pdf(glue("{new_plot_path}/cox_mutation_survival_with_score.pdf"))
+  walk(fits1[[2]], print)
+  graphics.off()
+  suppressMessages(
+    target_res %>%
+      select(stat2, where(is_character)) %>%
+      unnest_auto(stat2) %>%
+      unnest(cols = c(term, estimate, std.error, statistic, p.value)) %>%
+      write_tsv(glue("{new_out_path}/cox_mutation_survival_without_score.tsv"))
+  )
+
+  pdf(glue("{new_plot_path}/cox_mutation_survival_without_score.pdf"))
+  walk(fits2[[2]], print)
+  graphics.off()
 }
 
 ### Write Invocation -----------------------------------------------------------
