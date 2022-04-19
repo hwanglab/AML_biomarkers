@@ -102,13 +102,8 @@ suppressPackageStartupMessages({
 
 logger <- logger(threshold = argv$verbose)
 
-if (argv$dir == "") {
-  output_path <- paste0("outs/", argv$id)
-  output_path_root <- output_path
-} else {
-  output_path <- paste0(parser$run_dir, "/outs/", argv$id)
-  output_path_root <- output_path
-}
+source(here("cli/lib/utils.R"))
+output_path <- PrepareOutDir(argv)
 
 plots_path <- here(output_path, "plots")
 
@@ -148,10 +143,7 @@ if (argv$test_id == "incremental") {
   dir.create(plots_path, recursive = TRUE, showWarnings = FALSE)
 }
 
-if (!dir.exists(here(output_path))) {
-  fatal(logger, "Output directory does not exist")
-}
-
+StopIfOutputDirNotExist(output_path)
 dataset_names <- c("target", "tcga", "beat_aml")
 
 datasets <- map(

@@ -232,12 +232,7 @@ logger <- logger(threshold = argv$verbose)
 
 if (argv$id == "time") argv$id <- format(Sys.time(), format = "%m-%d-%Y[%H-%M]")
 
-if (argv$dir == "") {
-  output_path <- paste0("outs/", argv$id)
-} else {
-  output_path <- paste0(parser$run_dir, "/outs/", argv$id)
-}
-
+output_path <- PrepareOutDir(argv)
 plots_path <- here(output_path, "plots")
 
 debug(logger, paste0("Writing Outputs to: ", here(output_path)))

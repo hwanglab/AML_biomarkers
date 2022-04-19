@@ -59,11 +59,10 @@ source("cli/lib/lasso_funs.R")
 
 logger <- logger(threshold = argv$verbose)
 
-if (argv$dir == "") {
-  output_path <- paste0("outs/", argv$id)
-} else {
-  output_path <- paste0(parser$run_dir, "/outs/", argv$id)
-}
+source(here("cli/lib/utils.R"))
+output_path <- PrepareOutDir(argv)
+StopIfOutputDirNotExist(output_path)
+
 bc_ext <- "no_bc"
 if (argv$batch_correct) bc_ext <- argv$batch_correct_method
 

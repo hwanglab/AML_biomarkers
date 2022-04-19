@@ -105,3 +105,40 @@ LoadSavedModel <- function(type) {
   }
   return(model)
 }
+
+#' Load Annotated Deconvolution Matrix
+#' @param output_path output directory where information is stored
+#' @param logger a logger object for printing progress
+LoadAnnotatedMatrix <- function(output_path, logger) {
+  data_filename <- here(output_path, glue("cache/clinical_deconvoluted.rds"))
+  debug(logger, paste0("Importing Data from: ", data_filename))
+  suppressWarnings({
+    data <- tryCatch(
+      readRDS(data_filename),
+      error = function(e) {
+        error(logger, "Cannot find annotated deconvoluted samples.")
+        quit(status = 1)
+      }
+    )
+  })
+  return(data)
+}
+
+#' Stop Execution if Output directory does not exist
+StopIfOutputDirNotExist <- function(output_path) {
+  if (!dir.exists(here(output_path))) {
+    fatal(logger, "Output directory does not exist")
+    quit(status = 1)
+  }
+}
+
+#' Get output directory from argument parser
+#' @param argv and ArgumentParser object or list with indexes for `dir` and `id`
+PrepareOutDir <- function(argv) {
+  if (argv$dir == "") {
+    output_path <- paste0("outs/", argv$id)
+  } else {
+    output_path <- paste0(parser$dir, "/outs/", argv$id)
+  }
+  return(output_path)
+}

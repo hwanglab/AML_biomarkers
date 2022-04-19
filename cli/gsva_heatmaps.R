@@ -52,14 +52,9 @@ suppressPackageStartupMessages({
 
 logger <- logger(threshold = argv$verbose)
 
-if (argv$dir == "") {
-  output_path <- paste0("outs/", argv$id)
-} else {
-  output_path <- paste0(parser$run_dir, "/outs/", argv$id)
-}
-if (!dir.exists(here(output_path))) {
-  fatal(logger, "Output directory does not exist")
-}
+source(here("cli/lib/utils.R"))
+output_path <- PrepareOutDir(argv)
+StopIfOutputDirNotExist(output_path)
 
 plots_path <- here(output_path, "plots")
 

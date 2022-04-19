@@ -93,13 +93,7 @@ source(here("cli/lib/ml.R"))
 ##### Prepare Directory --------------------------------------------------------
 logger <- logger(threshold = argv$verbose)
 
-if (argv$dir == "") {
-  output_path <- paste0("outs/", argv$id)
-} else {
-  output_path <- paste0(parser$run_dir, "/outs/", argv$id)
-}
-
-data_filename <- here(output_path, glue("cache/clinical_deconvoluted.rds"))
+output_path <- PrepareOutDir(argv)
 
 output_path <- here(output_path, argv$test_id)
 plots_path <- here(output_path, "plots")
@@ -107,10 +101,7 @@ info(logger, c("Using ", argv$test_id, " as the test id"))
 dir.create(output_path, showWarnings = FALSE, recursive = TRUE)
 dir.create(plots_path, recursive = TRUE, showWarnings = FALSE)
 
-if (!dir.exists(here(output_path))) {
-  fatal(logger, "Output directory does not exist")
-  quit(status = 1)
-}
+StopIfOutputDirNotExist(output_path)
 
 if (argv$rerun) unlink(here(output_path, "saved_models"))
 
@@ -132,17 +123,7 @@ if (!dir.exists(here(output_path, "saved_models"))) {
   dir.create(here(output_path, "saved_models"))
 }
 
-debug(logger, paste0("Importing Data from: ", data_filename))
-
-suppressWarnings({
-  data <- tryCatch(
-    readRDS(data_filename),
-    error = function(e) {
-      error(logger, "Cannot find annotated deconvoluted samples.")
-      quit(status = 1)
-    }
-  )
-})
+data <- LoadAnnotatedMatrix(output_path, logger)
 
 debug(logger, "Preparing Data for training")
 debug(logger, paste0("Data Names: ", paste0(names(data), collapse = ", ")))

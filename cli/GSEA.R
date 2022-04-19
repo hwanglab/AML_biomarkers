@@ -50,16 +50,9 @@ logger <- logger(threshold = argv$verbose)
 if (argv$cores == 0) argv$cores <- availableCores()[[1]]
 info(logger, glue("The number of workers is set to {argv$cores}"))
 
-if (argv$dir == "") {
-  output_path <- paste0("outs/", argv$id)
-} else {
-  output_path <- paste0(parser$run_dir, "/outs/", argv$id)
-}
-
-if (!dir.exists(here(output_path))) {
-  fatal(logger, "Output directory does not exist")
-  quit(status = 1)
-}
+source(here("cli/lib/utils.R"))
+output_path <- PrepareOutDir(argv)
+StopIfOutputDirNotExist(output_path)
 
 plots_path <- here(output_path, "plots")
 
