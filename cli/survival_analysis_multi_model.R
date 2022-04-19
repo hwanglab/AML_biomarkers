@@ -94,6 +94,7 @@ source(here("cli/lib/ml.R"))
 logger <- logger(threshold = argv$verbose)
 
 output_path <- PrepareOutDir(argv)
+data <- LoadAnnotatedMatrix(output_path, logger)
 
 output_path <- here(output_path, argv$test_id)
 plots_path <- here(output_path, "plots")
@@ -122,8 +123,6 @@ if (dir.exists(here(output_path, "saved_modes"))) {
 if (!dir.exists(here(output_path, "saved_models"))) {
   dir.create(here(output_path, "saved_models"))
 }
-
-data <- LoadAnnotatedMatrix(output_path, logger)
 
 debug(logger, "Preparing Data for training")
 debug(logger, paste0("Data Names: ", paste0(names(data), collapse = ", ")))

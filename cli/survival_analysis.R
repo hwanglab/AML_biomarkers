@@ -339,6 +339,7 @@ logger <- logger(threshold = argv$verbose)
 
 source(here("cli/lib/utils.R"))
 output_path <- PrepareOutDir(argv)
+data <- LoadAnnotatedMatrix(output_path, logger)
 
 data_filename <- here(output_path, glue("cache/clinical_deconvoluted.rds"))
 
@@ -378,10 +379,6 @@ StopIfOutputDirNotExist(output_path)
 
 plots_path <- here(output_path, "plots")
 dir.create(plots_path, recursive = TRUE, showWarnings = FALSE)
-
-debug(logger, paste0("Importing Data from: ", data_filename))
-
-data <- LoadAnnotatedMatrix(output_path, logger)
 
 debug(logger, "Preparing Data for training")
 debug(logger, paste0("Data Names: ", paste0(names(data), collapse = ", ")))
