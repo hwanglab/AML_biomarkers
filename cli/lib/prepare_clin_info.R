@@ -124,12 +124,4 @@ beat_aml_clinical2 <- beat_aml_clinical %>%
   mutate(
     status = if_else(SAMPLE_TIMEPOINT == "Relapse", 1, 0),
     OS_DAYS = OS_MONTHS * (365.25 / 12)
-  ) %>%
-  select(
-    SAMPLE_ID,
-    FLT3_ITD_CONSENSUS_CALL,
-    OS_DAYS,
-    PB_BLAST_PERCENTAGE,
-    status
-  ) %>%
-  rename(`Peripheral blasts (%)` = PB_BLAST_PERCENTAGE)
+  ) 

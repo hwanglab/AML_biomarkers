@@ -37,9 +37,15 @@ PackageCheck <- function(..., error = TRUE) {
 }
 
 #' Parse information for survival
-#'
-ReturnNamesFromString <- function() {
-  if (length(argv$info) != 0) data_info <- c(data_info, argv$info)
+#' @param s a string see docs for formatting
+ReturnNamesFromString <- function(s) {
+  data_info <- c(
+    "TARGET:efs=Event Free Survival Time in Days:wbc=wbc_at_diagnosis:status=First Event:not_event=censored", # nolint
+    "TCGA:efs=days_to_death:status=vital_status:event=Dead",
+    "BeatAML:efs=OS_DAYS:status=status:event=1"
+  )
+
+  if (length(s) != 0) data_info <- c(data_info, s)
   split <- stringr::str_split(data_info, ":")
   names <- purrr::map_chr(split, ~ .x[[1]])
   split1 <- purrr::map(split, ~ .x[-1])
@@ -57,19 +63,25 @@ ReturnNamesFromString <- function() {
 ReturnNamesFromJSON <- function() {
   if (!file.exists(argv$info)) {
     error(logger, glue("File does not exist: {argv$info}"))
+
+ReturnNamesFromJSON <- function(s, training) {
+  if (!file.exists(s)) {
+    error(logger, glue("File does not exist: {s}"))
     quit(status = 1)
   }
-  jsonlite::fromJSON(argv$info) %>% map_dfr(as_tibble, .id = "set")
+  p <- jsonlite::fromJSON(s)
+  if (!training) p <- map_dfr(p, as_tibble, .id = "set")
+  return(p)
 }
 
-ParseNames <- function() {
-  if (length(argv$info) == 0) {
-    return(ReturnNamesFromString())
+ParseNames <- function(s, training = FALSE) {
+  if (length(s) == 0) {
+    return(ReturnNamesFromString(s))
   } else {
-    if (tools::file_ext(argv$info) == "json") {
-      return(ReturnNamesFromJSON())
+    if (tools::file_ext(s) == "json") {
+      return(ReturnNamesFromJSON(s, training))
     } else {
-      return(ReturnNamesFromString())
+      return(ReturnNamesFromString(s))
     }
   }
 }
@@ -141,4 +153,33 @@ PrepareOutDir <- function(argv) {
     output_path <- paste0(parser$dir, "/outs/", argv$id)
   }
   return(output_path)
+}
+
+#' Get and validate parameters for training data
+GetAndValidateTrainingParams <- function(output_path, argv, data) {
+  params <- ParseNames(argv$training, training = TRUE)
+  file <- here(glue("{output_path}/saved_models/training_hash.rds"))
+
+  train_vars <- params$use_for_training
+  print(train_vars)
+  params$use_for_training <- NULL
+  params <- list(
+    df = data,
+    cols = params,
+    vars = train_vars,
+    time_unit = "months"
+  )
+  hash <- digest::digest(params)
+  if (!file.exists(file)) {
+    saveRDS(hash, file)
+    return(params)
+  }
+  old_hash <- readRDS(file)
+
+  if (old_hash != hash) {
+    error(logger, "You have supplied a different set of paramters than were supplied previously.")
+    info(logger, "You should either run with the old params or select a new test id")
+    quit(status = 1)
+  }
+  return(params)
 }

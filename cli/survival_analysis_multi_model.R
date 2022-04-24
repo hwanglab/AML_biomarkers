@@ -45,6 +45,11 @@ parser$add_argument(
   nargs = "+"
 )
 parser$add_argument(
+  "--training",
+  help = "a colon sepeated list including the name of the dataset, event, status, efs, etc",
+  nargs = "+"
+)
+parser$add_argument(
   "--additional-testing-sets",
   "-T",
   help = "Additional annotated sets to mix into testing set",
@@ -108,7 +113,7 @@ dir.create(plots_path, recursive = TRUE, showWarnings = FALSE)
 
 StopIfOutputDirNotExist(output_path)
 
-if (argv$rerun) unlink(here(output_path, "saved_models"))
+if (argv$rerun_training) unlink(here(output_path, "saved_models"), recursive = TRUE)
 
 if (dir.exists(here(output_path, "saved_modes"))) {
   if (argv$categorical) {
@@ -136,15 +141,14 @@ data[["TRAIN"]] <- NULL
 
 ### Parse Options for ML Training and Testing ----------------------------------
 debug(logger, "Parsing Input options for ML")
-data_info <- c(
-  "TARGET:efs=Event Free Survival Time in Days:wbc=wbc_at_diagnosis:status=First Event:not_event=censored", # nolint
-  "TCGA:efs=days_to_death:status=vital_status:event=Dead",
-  "BeatAML:efs=OS_DAYS:status=status:event=1"
-)
 
-params <- ParseNames() %>%
+params <- ParseNames(argv$info) %>%
   bind_rows() %>%
   mutate(
+    cols = split(
+      select(cur_data(), -contains("event"), -set),
+      1:nrow(cur_data())
+    ),
     invert = if_else(is.na(not_event), FALSE, TRUE),
     event_use = if_else(is.na(event), not_event, event)
   )
@@ -160,26 +164,33 @@ data_names <- names(data) %>%
 
 ### Prepare data for ML Methods ------------------------------------------------
 debug(logger, "Preparing data")
-train_df <- CleanData(
-  training,
-  wbc = "wbc_at_diagnosis",
-  efs = "event_free_survival_time_in_days",
-  status = "First Event",
-  time_unit = "months"
-) %>%
-  PrepareDataForML()
+
+training_params <- GetAndValidateTrainingParams(output_path, argv, training)
+train_df <- do.call("CleanData", args = training_params)
+
+training_params$df <- train_df
+train_df <- do.call("PrepareDataForML", args = training_params)
+## train_df <- CleanData(
+##   training,
+##   wbc = "wbc_at_diagnosis",
+##   efs = "event_free_survival_time_in_days",
+##   status = "First Event",
+##   time_unit = "months"
+## ) %>%
+##   PrepareDataForML(wbc = "wbc_at_diagnosis")
 
 # TODO: allow conversion of time to event from datasets.json
-input_params <- select(data_names, data, wbc, efs, status)
+input_params <- select(data_names, data, cols)
+
 data_names <- mutate(
   data_names,
   clean = pmap(
     input_params,
-    ~ CleanData(..1, ..2, ..3, ..4, time_unit = "months")
+    ~ CleanData(..1, ..2, time_unit = "months")
   )
 )
 
-data_names <- mutate(data_names, testing = map(clean, PrepareDataForML))
+data_names <- mutate(data_names, testing = map(clean, PrepareDataForML, testing = FALSE))
 
 if (length(argv$additional_testing_sets) != 0) {
   debug(logger, "Adding addional testing sets")
@@ -192,13 +203,13 @@ if (length(argv$additional_testing_sets) != 0) {
 
 ##### LASSO Model --------------------------------------------------------------
 
-info(logger, "Running LASSO")
-model_use <- "lasso"
+info(logger, glue("Running Regularized GLM with {argv$n_alpha} value(s) of alpha"))
+model_use <- "reg_glm"
 if (CheckSavedModel(model_use)) {
   info(logger, glue("Existing model found. Using that instead..."))
   models <- LoadSavedModel(model_use)
 } else {
-  alphas <- seq(0, 1, length.out = argv$n_alpha)
+  alphas <- seq(0, 1, length.out = as.integer(argv$n_alpha))
   models <- DoGLMAlpha(
     train_df,
     "label",
@@ -231,8 +242,9 @@ if (CheckSavedModel(model_use)) {
 
 ### Random Forest Model --------------------------------------------------------
 
-info(logger, "Running Random Forests")
+info(logger, "Running Random Forest")
 model_use <- "rf"
+write_invoke <- TRUE
 if (CheckSavedModel(model_use)) {
   info(logger, glue("Existing model found. Using that instead..."))
   models[[model_use]] <- LoadSavedModel(model_use)
@@ -246,7 +258,8 @@ if (CheckSavedModel(model_use)) {
     stepFactor = 1.5,
     improve = 0.01,
     trace = FALSE,
-    doBest = TRUE
+    doBest = TRUE,
+    plot = FALSE
   )
   saveRDS(models[[model_use]], GetSavedModelFilename(model_use))
   debug(logger, glue("{model_use} Model Training Done!"))

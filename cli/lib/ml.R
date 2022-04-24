@@ -6,23 +6,26 @@
 #' @param efs column with survival as string
 #' @param status column with status as string
 #' @param time_unit string with unit of time to use
-CleanData <- function(df, wbc = NULL, efs = NULL, status, time_unit = "days") {
+CleanData <- function(df, cols, time_unit = "days", ...) {
   clean <- janitor::clean_names(df)
 
-  wbc <- janitor::make_clean_names(wbc)
-  efs <- janitor::make_clean_names(efs)
-  status <- janitor::make_clean_names(status)
+  namekey <- names(cols)
+  names(namekey) <- janitor::make_clean_names(as.character(cols))
 
-  namekey <- c("original_time", "status")
-  names(namekey) <- c(efs, status)
+  ## wbc <- janitor::make_clean_names(wbc)
+  ## efs <- janitor::make_clean_names(efs)
+  ## status <- janitor::make_clean_names(status)
+
+  ## namekey <- c("original_time", "status", "wbc")
+  ## names(namekey) <- c(efs, status, wbc)
 
   clean <- plyr::rename(clean, namekey, warn_missing = TRUE) %>%
     mutate(
-      days = lubridate::days(as.integer(original_time)),
+      days = lubridate::days(as.integer(efs)),
       time = lubridate::time_length(days, unit = time_unit) %>% as.numeric(),
-      days = original_time
+      days = efs
     ) %>%
-    select(starts_with("cluster"), time, status, days)
+    select(starts_with("cluster"), time, days, all_of(names(cols)))
 
   # Suppress "Removed n rows containing missing values." warnings
   suppressWarnings(
@@ -36,8 +39,15 @@ CleanData <- function(df, wbc = NULL, efs = NULL, status, time_unit = "days") {
 
 #' Subset data with good features
 #' @param df a datafame
-PrepareDataForML <- function(df, categorical = FALSE) {
-  data <- dplyr::select(df, starts_with("cluster"))
+#' @param vars column names to use for training
+#' @param categorical should the categorical outcome column be pulled instead
+#' @param training are we preparing data for training
+PrepareDataForML <- function(df, vars = NULL, categorical = FALSE, training = TRUE, ...) {
+  if (training) {
+    data <- dplyr::select(df, starts_with("cluster"), all_of(vars))
+  } else {
+    data <- df
+  }
 
   if (categorical) {
     labs <- pull(df, status)

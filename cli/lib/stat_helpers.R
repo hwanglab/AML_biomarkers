@@ -4,7 +4,7 @@
 DoCox <- function(d, formula) {
     fit <- survival::coxph(formula, data = d)
     title <- glue::glue("Liklihood Ratio = {AngrilyExtractLiklihoodRatio(fit)}")
-    plot <- survminer::ggforest(fit, data = d, main = title)
+    plot <- ggforest(fit, data = d, main = title)
     return(list(fit = fit, plot = plot))
 }
 
