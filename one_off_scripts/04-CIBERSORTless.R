@@ -16,7 +16,7 @@ target <- read_tsv(file = here("cibersort_in/target_data.txt"))
 val <- read_excel(here("clinical_info/TARGET_AML_ClinicalData_Validation_20181213.xlsx"))
 dis <- read_excel(here("clinical_info/TARGET_AML_ClinicalData_Discovery_20181213.xlsx"))
 
-signature <- read_table("data/lsc_de_ng_et_al.txt", col_names = FALSE)[[1]]
+#signature <- read_table("data/lsc_de_ng_et_al.txt", col_names = FALSE)[[1]]
 
 clinical <- bind_rows(val, dis) %>%
   distinct() %>%
@@ -77,7 +77,7 @@ lasso_model <- DoGLMAlpha(
 test <- target_split$test %>%
   as_tibble() %>%
   mutate(
-    status = if_else(`First Event` == "relapse", 1, 0),
+    status = if_else(`First Event` != "censored", 1, 0),
     `First Event` = NULL
   ) %>%
   mutate(
@@ -210,8 +210,3 @@ write_tsv(
   stat_res,
   here("outs/TARGET_LASSO_model_survival_without_CIBERSORTx.tsv")
 )
-
-
-# Ng et al signature -----------------------------------------------------------
-
-signature <- read_table("data/lsc_de_ng_et_al.txt", col_names = FALSE)[[1]]
