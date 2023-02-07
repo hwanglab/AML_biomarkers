@@ -1,0 +1,30 @@
+{
+    "TARGET": {
+        "efs": ["Event Free Survival Time in Days", "Overall Survival Time in Days"],
+        "pb_blast": "WBC at Diagnosis",
+        "status": ["First Event", "Vital Status"],
+        "not_event": ["censored", null],
+        "event": [null, "dead"],
+        "bm_blast": "Bone marrow leukemic blast percentage (%)"
+    },
+    "TCGA": {
+        "efs":"days_to_death",
+        "pb_blast": "lab_procedure_blast_cell_outcome_percentage_value",
+        "status": "vital_status",
+        "event": "Dead",
+        "bm_blast": "lab_procedure_bone_marrow_blast_cell_outcome_percent_value"
+    },
+    "BeatAML": {
+        "efs":"OS_DAYS",
+        "status": "status",
+        "pb_blast": "PB_BLAST_PERCENTAGE",
+        "event": "1",
+        "bm_blast": "BM_BLAST_PERCENTAGE"
+    },
+    "AML02": {
+        "efs":"Event Free Survival Time in Days",
+        "status":"efs.evnt",
+        "event":"1",
+        "pb_blast": "WBC at Diagnosis"
+    }
+}

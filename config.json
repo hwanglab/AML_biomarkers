@@ -1,0 +1,9 @@
+{
+    "id":"flt3_cebpa_stem",
+    "cols": ["timepoint", "stemness"],
+    "vals": ["Diagnosis", "Stem"],
+    "datasets": ["target_data.txt", "tcga_data.txt", "beat_aml_data.txt"],
+    "replicates": 3,
+    "test": "EFS",
+    "verbose": "DEBUG"
+}

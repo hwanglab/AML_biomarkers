@@ -1,0 +1,7 @@
+{
+    "efs": "Event Free Survival Time in Days",
+    "pb_blast": "WBC at Diagnosis",
+    "status": "First Event",
+    "bm_blast": "Bone marrow leukemic blast percentage (%)",
+    "use_for_training": null
+}
