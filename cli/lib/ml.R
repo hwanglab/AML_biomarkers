@@ -18,8 +18,10 @@ CleanData <- function(df, cols, time_unit = "days", ...) {
 
   ## namekey <- c("original_time", "status", "wbc")
   ## names(namekey) <- c(efs, status, wbc)
-
-  clean <- plyr::rename(clean, namekey, warn_missing = TRUE) %>%
+  #print(namekey)
+  clean <- plyr::rename(clean, namekey, warn_missing = TRUE) #%>%
+  #print(colnames(clean))
+  clean <- clean %>%
     mutate(
       days = lubridate::days(as.integer(efs)),
       time = lubridate::time_length(days, unit = time_unit) %>% as.numeric(),
@@ -85,6 +87,7 @@ CalcualteScoreFromModel <- function(data, model) {
     score_bin = if_else(score > median(score, na.rm = TRUE), "HIGH", "LOW")
   ) %>%
     dplyr::select(score, score_bin)
+
   return(data)
 }
 

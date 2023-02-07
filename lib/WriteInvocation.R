@@ -26,7 +26,7 @@ TestInvocation <- function(argv, output_path) {
     stringr::str_remove("--file=") %>%
     basename() %>%
     str_remove(".R")
-  
+
   exarg <- read_delim(here(output_path, header), delim = ": ", col_names = c("arg", val))
   exarg$val[is.na(exarg$val)] <- ""
   argt <- as.list(exarg$val)

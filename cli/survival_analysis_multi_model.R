@@ -36,7 +36,7 @@ parser$add_argument(
   "--n-alpha",
   "-A",
   "-N",
-  help = "how many values for alpha for the GLM should be tested?",
+  help = "how many values for alpha for the GLM should be tested? Alterntativly, a single value [0,1] to use as the alpha value.",
   default = 2
 )
 parser$add_argument(
@@ -102,6 +102,10 @@ source(here("cli/lib/ggforest.R"))
 ##### Prepare Directory --------------------------------------------------------
 logger <- logger(threshold = argv$verbose)
 
+if (argv$n_alpha > 0) {
+  error(logger, "The value for n_alpha cannot be negative")
+}
+
 output_path <- PrepareOutDir(argv)
 data <- LoadAnnotatedMatrix(output_path, logger)
 
@@ -162,14 +166,32 @@ data_names <- names(data) %>%
   ) %>%
   inner_join(params, by = "set")
 
+print(data_names)
 ### Prepare data for ML Methods ------------------------------------------------
 debug(logger, "Preparing data")
 
 training_params <- GetAndValidateTrainingParams(output_path, argv, training)
+#print(training_params)
 train_df <- do.call("CleanData", args = training_params)
 
 training_params$df <- train_df
 train_df <- do.call("PrepareDataForML", args = training_params)
+
+non_cluster_names <- colnames(train_df) %>% str_subset("cluster", negate = TRUE)
+cluster_ids <- colnames(train_df) %>%
+  str_subset("cluster") %>%
+  str_remove("cluster") %>%
+  as.numeric() %>%
+  range()
+cluster_seq <- glue("clusters {cluster_ids[[1]]} - {cluster_ids[[2]]}")
+
+collapsed_colnames <- glue_collapse(
+  c(non_cluster_names, cluster_seq),
+  sep = ", ",
+  last = " and "
+)
+debug(logger, glue("The columns selected for training are: {collapsed_colnames}"))
+
 ## train_df <- CleanData(
 ##   training,
 ##   wbc = "wbc_at_diagnosis",
@@ -209,7 +231,12 @@ if (CheckSavedModel(model_use)) {
   info(logger, glue("Existing model found. Using that instead..."))
   models <- LoadSavedModel(model_use)
 } else {
-  alphas <- seq(0, 1, length.out = as.integer(argv$n_alpha))
+  if (argv$n_alpha <= 1) {
+    info(logger, "One value detected for alpha.")
+    alphas <- argv$n_alpha
+  } else {
+    alphas <- seq(0, 1, length.out = as.integer(argv$n_alpha))
+  }
   models <- DoGLMAlpha(
     train_df,
     "label",
@@ -290,7 +317,7 @@ data_names <- data_names %>%
     surv_data = pmap(input_params, PrepareDataForSurvival)
   )
 
-models <- map(models, CheckLASSOValidity)
+models <- map(models, CheckLASSOValidity) %>% discard(is_null)
 
 for (i in seq_along(models)) {
   debug(logger, glue("Running cox survival with {class(models[[i]])}"))
@@ -298,6 +325,16 @@ for (i in seq_along(models)) {
   model_outs <- data_names %>%
     mutate(
       scores = map(clean, ~ CalcualteScoreFromModel(.x, models[[i]])),
+      range = map(scores, ~ .x[["score"]]) %>% map_dbl(~ diff(range(.x)))
+    ) %>%
+    filter(range != 0, is.finite(range))
+
+  if (nrow(model_outs) == 0) {
+    info(logger, "Model created a range of 0 for all datasets")
+    info(logger, "Skipping...")
+  }
+  model_outs <- model_outs %>%
+    mutate(
       surv_data_bound = map2(surv_data, scores, bind_cols),
       fits = map(
         surv_data_bound,

@@ -2,6 +2,7 @@
 
 # Set custom classes for organization of objects for Lasso Modeling
 setOldClass("cv.glmnet")
+setOldClass("simpleError")
 setClass("AverageLassoModel", contains = "data.frame")
 setClass("GLM", representation(glm = "cv.glmnet", coefs = "numeric"))
 setClass(
@@ -13,6 +14,7 @@ setClass(
     alpha = "numeric"
   )
 )
+setClass("FailedModel", contains = c("character"))
 
 
 #' Run a Lasso Model with predefined foldid and get coeffients
@@ -23,12 +25,19 @@ setClass(
 #'
 #' @return GLM object
 LassoFunction <- function(alpha, response, mat, fold_vector) {
-  fit_res <- cv.glmnet(
-    y = response,
-    x = mat,
-    foldid = fold_vector,
-    alpha = alpha
+  fit_res <- tryCatch(
+    cv.glmnet(
+      y = response,
+      x = mat,
+      foldid = fold_vector,
+      alpha = alpha
+    ),
+  error = function(e) {
+    ReturnFailedModel(e)
+  }
   )
+
+  if (is.FailedModel(fit_res)) return(fit_res)
   fit_est <- as.numeric(coef(fit_res, s = "lambda.min"))
   res <- new("GLM", glm = fit_res, coefs = fit_est)
   return(res)
@@ -39,7 +48,8 @@ LassoFunction <- function(alpha, response, mat, fold_vector) {
 #' @inheritParams LassoFunction
 #' @param k number of iterations for lasso model
 MultipleLassoFunction <- function(alpha, response, mat, fold_vector, k) {
-  purrr::map(1:k, ~ LassoFunction(alpha, response, mat, fold_vector))
+  purrr::map(1:k, ~ LassoFunction(alpha, response, mat, fold_vector)) %>%
+    discard(is.FailedModel)
 }
 
 #' Average Multiple iterations of a Lasso model
@@ -110,12 +120,21 @@ DoLassoModel <- function(df, outcome,
 
   if (length(response) != nrow(mat)) rlang::abort("Number of observations does not match!")
   if (nfolds == 0) nfolds <- length(response)
-  fold_vector <- cv.glmnet(
+  fold_vector <- tryCatch(
+    cv.glmnet(
     y = response,
     x = mat,
     nfolds = nfolds,
     keep = TRUE
-  )$foldid
+  )$foldid,
+  error = function(e) {
+    ReturnFailedModel(e)
+  }
+  )
+  if (is.FailedModel(fold_vector)) {
+    warning(logger, "GLM Model Training Failed, skipping...")
+    return(fold_vector)
+  }
 
   models <- MultipleLassoFunction(
     alpha = alpha,
@@ -151,6 +170,9 @@ DoGLMAlpha <- function(df, outcome, alphas, nfolds, k = 1000, save = TRUE) {
 #'
 #' @return invisible
 SaveLassoAsTSV <- function(model) {
+  if (is.FailedModel(model)) {
+    return(invisible(NULL))
+  }
   alpha <- model@alpha
   red <- model@average %>%
     `class<-`("data.frame") %>%
@@ -167,9 +189,14 @@ SaveLassoAsTSV <- function(model) {
 #' @return if model is not a MultiLassoModel object, return unchanged, \
 #'         otherwise return object if the number of features is at least 2
 CheckLASSOValidity <- function(model) {
+  if ("FailedModel" %in% class(model)) {
+      model <- NULL
+    }
+
   if (!("MultiLassoModel" %in% class(model))) {
     return(model)
   }
+
   if (model@nfeats == 0) model <- NULL
   return(model)
 }
@@ -254,3 +281,10 @@ setMethod(
     print(object)
   }
 )
+
+is.FailedModel <- function(x) inherits(x, "FailedModel")
+
+ReturnFailedModel <- function(e) {
+  message <- as.character(e)
+  new("FailedModel", message)
+}

@@ -492,7 +492,7 @@ write_csv(results$stats, file = here(output_path, "survival.csv"))
 info(logger, "Mulitvariate analysis on TARGET")
 
 data <- map2(data, results$scores, ~ mutate(.x, score = .y))
-target_data <- data[c("FLT3", "NEG", "CEBPA")]
+target_data <- data[c("TARGET:FLT3", "TARGET:NEG", "TARGET:CEBPA")]
 
 SetupTARGETData <- function(df) {
   res <- df %>%

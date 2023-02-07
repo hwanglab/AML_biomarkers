@@ -60,10 +60,6 @@ ReturnNamesFromString <- function(s) {
     dplyr::mutate(set = names)
 }
 
-ReturnNamesFromJSON <- function() {
-  if (!file.exists(argv$info)) {
-    error(logger, glue("File does not exist: {argv$info}"))
-
 ReturnNamesFromJSON <- function(s, training) {
   if (!file.exists(s)) {
     error(logger, glue("File does not exist: {s}"))

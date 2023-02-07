@@ -227,6 +227,7 @@ suppressPackageStartupMessages({
 })
 
 options(future.globals.maxSize = 32 * 1024^3)
+source(here("cli/lib/utils.R"))
 source(here("lib/functions.R"))
 logger <- logger(threshold = argv$verbose)
 

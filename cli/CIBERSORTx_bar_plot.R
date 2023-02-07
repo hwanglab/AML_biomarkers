@@ -39,23 +39,41 @@ plots_path <- here(output_path, "plots")
 
 decon <- readRDS(here(output_path, glue("cache/clinical_deconvoluted.rds")))
 
+decon$`TCGA:FLT3` <- mutate(decon$`TCGA:FLT3`, time = days_to_death)
+decon$`BeatAML:FLT3` <- mutate(decon$`BeatAML:FLT3`, time = OS_DAYS)
 
-# decon$TCGA <- mutate(decon$TCGA, time = days_to_death)
-decon$BeatAML <- mutate(decon$BeatAML, time = OS_DAYS)
+target <- decon[c("TRAIN", "TARGET:FLT3", "TARGET:NEG", "TARGET:CEBPA")]
 
-target <- decon[c("TRAIN", "FLT3", "NEG", "CEBPA")]
+TARGETPlot <- function(df) {
+  df %>%
+    distinct(USI, .keep_all = TRUE) %>%
+    pivot_longer(cols = starts_with("cluster"), names_to = "cluster", values_to = "frequency") %>%
+    mutate(cluster = str_remove(cluster, "cluster") %>% as.numeric() %>% as.factor()) %>%
+    ggplot(mapping = aes(x = reorder(USI, -`Event Free Survival Time in Days`), y = frequency, fill = cluster)) +
+    geom_col() +
+    theme_classic() +
+    viridis::scale_fill_viridis(discrete = TRUE) +
+    theme(axis.text.x = element_blank(), axis.title.x = element_blank())
+}
 
-TARGETPlot <- . %>%
-  distinct(USI, .keep_all = TRUE) %>%
+pdf(glue("{plots_path}/CIBERSORTx_bar_plots.pdf"))
+map(target, TARGETPlot)
+
+decon$`BeatAML:FLT3` %>%
   pivot_longer(cols = starts_with("cluster"), names_to = "cluster", values_to = "frequency") %>%
   mutate(cluster = str_remove(cluster, "cluster") %>% as.numeric() %>% as.factor()) %>%
-  ggplot(mapping = aes(x = USI, y = frequency, fill = cluster)) +
+  ggplot(mapping = aes(x = reorder(Mixture, -time), y = frequency, fill = cluster)) +
   geom_col() +
-  theme_classic()
+  theme_classic() +
+  viridis::scale_fill_viridis(discrete = TRUE) +
+  theme(axis.text.x = element_blank(), axis.title.x = element_blank())
 
-decon$BeatAML %>%
+decon$`TCGA:FLT3` %>%
   pivot_longer(cols = starts_with("cluster"), names_to = "cluster", values_to = "frequency") %>%
   mutate(cluster = str_remove(cluster, "cluster") %>% as.numeric() %>% as.factor()) %>%
   ggplot(mapping = aes(x = Mixture, y = frequency, fill = cluster)) +
   geom_col() +
-  theme_classic()
+  theme_classic() +
+  viridis::scale_fill_viridis(discrete = TRUE) +
+  theme(axis.text.x = element_blank(), axis.title.x = element_blank())
+graphics.off()

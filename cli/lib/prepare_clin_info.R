@@ -45,8 +45,8 @@ cog <- read_excel(here("clinical_info/AAML19B3Q_data_transfer.xlsx"),
     `Event Free Survival Time in Days` = as.numeric(
       `Event Free Survival Time in Days`
     ),
-    `Event Free Survival Time in Days` = if_else(
-      `Event Free Survival Time in Days` == ".",
+    cog_efs = if_else(
+      is.na(`Event Free Survival Time in Days`),
       5 * 365.25,
       `Event Free Survival Time in Days`
     )
@@ -54,7 +54,7 @@ cog <- read_excel(here("clinical_info/AAML19B3Q_data_transfer.xlsx"),
   select(
     init_treatment_arm, fin_treatment_arm, `Overall Survival Time in Days`,
     `FLT3/ITD positive?`, `WBC at Diagnosis`, `FLT3/ITD positive?`,
-    `NPM mutation`, `CEBPA mutation`, USI
+    `NPM mutation`, `CEBPA mutation`, USI, cog_efs
   )
 
 seq <- read_excel(
